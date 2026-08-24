@@ -110,3 +110,15 @@ export async function updateDoctorSchedule(payload: {
     body: JSON.stringify(payload),
   });
 }
+
+
+export async function completeDoctorProfile(payload: {
+  specialisation: string;
+  workingHours: WorkingHourItem[];
+  slotDurationMinutes: number;
+}): Promise<DoctorSchedule> {
+  return apiFetch<DoctorSchedule>("/doctors/complete-profile", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

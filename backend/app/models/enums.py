@@ -13,6 +13,7 @@ class UserStatus(str, Enum):
     ACTIVE = "active"
     PENDING_APPROVAL = "pending_approval"
     REJECTED = "rejected"
+    PROFILE_INCOMPLETE = "profile_incomplete"
 
 
 class AppointmentStatus(str, Enum):

@@ -8,10 +8,11 @@ from fastapi import HTTPException, status
 from ..models.appointment import Appointment
 from ..models.clinical import SymptomForm, VisitNotes
 from ..models.embedded import LeaveDay, PostVisitSummary, PrescriptionItem, WorkingHour
-from ..models.enums import AppointmentStatus, UserRole
+from ..models.enums import AppointmentStatus, UserRole, UserStatus
 from ..models.user import DoctorProfile, User
 from ..schemas.doctor import (
     DoctorAppointmentItem,
+    DoctorCompleteProfileRequest,
     DoctorNotesResponse,
     DoctorScheduleResponse,
     DoctorScheduleUpdate,
@@ -249,5 +250,48 @@ async def get_visit_detail(doctor_id: str, appointment_id: str) -> DoctorNotesRe
         prescriptions=notes.prescription if notes else [],
         ai_post_visit_summary=notes.ai_post_visit_summary if notes else None,
         ai_post_visit_summary_status=notes.status if notes else None,
+    )
+
+
+async def complete_doctor_profile(
+    doctor_id: str,
+    payload: DoctorCompleteProfileRequest,
+) -> DoctorScheduleResponse:
+    doctor = await User.get(PydanticObjectId(doctor_id))
+    if doctor is None or doctor.role != UserRole.DOCTOR:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
+
+    profile = await DoctorProfile.find_one(DoctorProfile.user_id == doctor.id)
+
+    # Convert WorkingHour items to model format
+    working_hours_models = [
+        WorkingHour(day_of_week=w.day_of_week, start_time=w.start_time, end_time=w.end_time)
+        for w in payload.working_hours
+    ]
+
+    if profile is None:
+        profile = DoctorProfile(
+            user_id=doctor.id,
+            specialisation=payload.specialisation,
+            slot_duration_minutes=payload.slot_duration_minutes,
+            working_hours=working_hours_models,
+            leave_days=[],
+        )
+        await profile.insert()
+    else:
+        profile.specialisation = payload.specialisation
+        profile.slot_duration_minutes = payload.slot_duration_minutes
+        profile.working_hours = working_hours_models
+        await profile.save()
+
+    doctor.status = UserStatus.PENDING_APPROVAL
+    await doctor.save()
+
+    return DoctorScheduleResponse(
+        doctor_id=str(doctor.id),
+        specialisation=profile.specialisation,
+        working_hours=profile.working_hours,
+        slot_duration_minutes=profile.slot_duration_minutes,
+        leave_days=profile.leave_days,
     )
 

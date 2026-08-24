@@ -5,7 +5,7 @@ export interface PublicUser {
   name: string;
   email: string;
   role: "patient" | "doctor" | "admin";
-  status: "active" | "pending_approval" | "rejected";
+  status: "active" | "pending_approval" | "rejected" | "profile_incomplete";
 }
 
 export interface TokenPair {

@@ -28,7 +28,13 @@ export default function LoginPage() {
       if (loggedUser.role === "patient") {
         router.push("/patient");
       } else if (loggedUser.role === "doctor") {
-        router.push(loggedUser.status === "pending_approval" ? "/doctor/pending" : "/doctor");
+        if (loggedUser.status === "profile_incomplete") {
+          router.push("/doctor/complete-profile");
+        } else if (loggedUser.status === "pending_approval") {
+          router.push("/doctor/pending");
+        } else {
+          router.push("/doctor");
+        }
       } else if (loggedUser.role === "admin") {
         router.push("/admin");
       } else {

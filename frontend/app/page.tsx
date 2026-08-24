@@ -15,7 +15,9 @@ export default function RootPage() {
       if (user.role === "patient") {
         router.push("/patient");
       } else if (user.role === "doctor") {
-        if (user.status === "pending_approval") {
+        if (user.status === "profile_incomplete") {
+          router.push("/doctor/complete-profile");
+        } else if (user.status === "pending_approval") {
           router.push("/doctor/pending");
         } else {
           router.push("/doctor");

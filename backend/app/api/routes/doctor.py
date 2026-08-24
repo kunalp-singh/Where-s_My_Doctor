@@ -6,6 +6,7 @@ from ...deps import get_current_user_id, require_roles
 from ...models.enums import UserRole
 from ...schemas.doctor import (
     DoctorAppointmentItem,
+    DoctorCompleteProfileRequest,
     DoctorNotesResponse,
     DoctorScheduleResponse,
     DoctorScheduleUpdate,
@@ -17,6 +18,7 @@ from ...services.doctor import (
     list_doctor_appointments,
     submit_visit_notes,
     update_doctor_schedule,
+    complete_doctor_profile,
 )
 
 router = APIRouter(prefix="/doctors", tags=["doctor"])
@@ -64,3 +66,12 @@ async def visit_notes(
     _payload: dict[str, str] = Depends(require_roles(UserRole.DOCTOR)),
 ) -> DoctorNotesResponse:
     return await submit_visit_notes(str(doctor_id), appointment_id, payload)
+
+
+@router.post("/complete-profile", response_model=DoctorScheduleResponse)
+async def complete_profile(
+    payload: DoctorCompleteProfileRequest,
+    doctor_id: str = Depends(get_current_user_id),
+    _payload: dict[str, str] = Depends(require_roles(UserRole.DOCTOR)),
+) -> DoctorScheduleResponse:
+    return await complete_doctor_profile(str(doctor_id), payload)

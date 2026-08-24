@@ -23,6 +23,8 @@ export default function DoctorDashboardPage() {
     } else if (authStatus === "authenticated" && user) {
       if (user.role !== "doctor") {
         router.push("/");
+      } else if (user.status === "profile_incomplete") {
+        router.push("/doctor/complete-profile");
       } else if (user.status === "pending_approval") {
         router.push("/doctor/pending");
       } else {

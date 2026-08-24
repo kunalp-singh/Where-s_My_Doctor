@@ -90,9 +90,22 @@ async def ensure_db_middleware(request: Request, call_next):
     return response
 
 
+settings = get_settings()
+
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+if settings.frontend_url:
+    fe_url = settings.frontend_url.rstrip("/")
+    if fe_url not in origins:
+        origins.append(fe_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -127,7 +127,7 @@ async def find_or_create_google_user(
     except ValueError:
         role = UserRole.PATIENT
 
-    initial_status = UserStatus.PENDING_APPROVAL if role == UserRole.DOCTOR else UserStatus.ACTIVE
+    initial_status = UserStatus.PROFILE_INCOMPLETE if role == UserRole.DOCTOR else UserStatus.ACTIVE
 
     import secrets
     random_password = secrets.token_urlsafe(32)

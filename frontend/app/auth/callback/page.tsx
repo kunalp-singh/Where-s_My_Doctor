@@ -23,7 +23,9 @@ function AuthCallbackInner() {
 
     loginWithTokens({ accessToken, refreshToken, role, status: userStatus ?? "active" });
 
-    if (role === "doctor" && userStatus === "pending_approval") {
+    if (role === "doctor" && userStatus === "profile_incomplete") {
+      router.replace("/doctor/complete-profile");
+    } else if (role === "doctor" && userStatus === "pending_approval") {
       router.replace("/doctor/pending");
     } else if (role === "doctor") {
       router.replace("/doctor");

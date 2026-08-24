@@ -60,3 +60,11 @@ class DoctorScheduleUpdate(BaseModel):
 
     working_hours: list[WorkingHour] | None = Field(default=None, alias="workingHours")
     slot_duration_minutes: int | None = Field(default=None, alias="slotDurationMinutes")
+
+
+class DoctorCompleteProfileRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    specialisation: str
+    working_hours: list[WorkingHour] = Field(alias="workingHours")
+    slot_duration_minutes: int = Field(default=30, alias="slotDurationMinutes")
