@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import logging
 
 from beanie import init_beanie
-from fastapi import FastAPI, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -98,6 +98,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Support both root paths (/auth/login) and /api prefixed paths (/api/auth/login)
+api_router = APIRouter(prefix="/api")
+api_router.include_router(auth_router)
+api_router.include_router(google_calendar_router)
+api_router.include_router(admin_router)
+api_router.include_router(patient_router)
+api_router.include_router(doctor_router)
+
+app.include_router(api_router)
 app.include_router(auth_router)
 app.include_router(google_calendar_router)
 app.include_router(admin_router)
@@ -106,6 +115,7 @@ app.include_router(doctor_router)
 
 
 @app.get("/")
+@app.get("/api")
 async def root():
     return {
         "message": "Appointment Care API Server is running.",
@@ -115,5 +125,6 @@ async def root():
 
 
 @app.get("/health")
+@app.get("/api/health")
 async def health_check():
     return {"status": "ok", "db_initialized": _db_initialized, "db_error": _db_error}
