@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends
 from ...deps import require_roles
 from ...models.enums import UserRole
 from ...schemas.admin import DoctorCreate, DoctorResponse, DoctorUpdate, LeaveDayRequest, LeaveDaySummary
-from ...services.admin import approve_doctor, create_doctor, delete_doctor, get_doctor, list_doctors, mark_leave_date, reject_doctor, update_doctor
+from ...schemas.auth import AdminCreateRequest, PublicUser
+from ...services.admin import approve_doctor, create_doctor, delete_doctor, get_doctor, list_doctors, mark_leave_date, reject_doctor, update_doctor, create_admin
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 

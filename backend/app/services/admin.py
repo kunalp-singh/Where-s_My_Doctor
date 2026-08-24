@@ -8,8 +8,31 @@ from ..models.embedded import LeaveDay
 from ..models.enums import AppointmentStatus, NotificationType, UserRole, UserStatus
 from ..models.user import DoctorProfile, User
 from ..schemas.admin import DoctorCreate, DoctorResponse, DoctorUpdate, LeaveDayRequest, LeaveDaySummary
+from ..schemas.auth import AdminCreateRequest, PublicUser
 from ..services.security import hash_password
 from .notifications import dispatch_appointment_notification
+async def create_admin(payload: AdminCreateRequest) -> PublicUser:
+    # Ensure email is unique
+    existing = await User.find_one(User.email == payload.email)
+    if existing is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User with this email already exists")
+    # Create admin user
+    user = User(
+        name=payload.name,
+        email=payload.email,
+        role=UserRole.ADMIN,
+        password_hash=hash_password(payload.password),
+        status=UserStatus.ACTIVE,
+    )
+    await user.insert()
+    return PublicUser(
+        id=str(user.id),
+        name=user.name,
+        email=user.email,
+        role=user.role,
+        status=user.status,
+    )
+
 
 
 async def list_doctors() -> list[DoctorResponse]:

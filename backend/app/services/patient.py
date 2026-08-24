@@ -429,6 +429,17 @@ async def confirm_appointment_hold(patient_id: str, appointment_id: str) -> Pati
         html_body=html_body,
     )
 
+    # Send confirmation email via Resend
+    try:
+        from .email_service import send_appointment_confirmation
+        await send_appointment_confirmation(
+            email=patient.email,
+            subject="Your Appointment is Confirmed",
+            html_body=html_body,
+        )
+    except Exception as email_err:
+        logger.error("Resend email confirmation failed: %s", email_err)
+
     return PatientAppointmentResponse(
         appointment_id=str(appointment.id),
         doctor_id=str(doctor.id),

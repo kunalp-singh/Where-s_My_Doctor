@@ -45,3 +45,9 @@ class PublicUser(BaseModel):
     email: EmailStr
     role: UserRole
     status: UserStatus = Field(default=UserStatus.ACTIVE)
+class AdminCreateRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    name: str
+    email: EmailStr
+    password: str = Field(min_length=8)
+
