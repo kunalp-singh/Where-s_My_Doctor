@@ -4,10 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React, { useState } from "react";
 import { Button } from "../../components/ui/Button";
-import { Card, CardBody, CardHeader, CardTitle } from "../../components/ui/Card";
 import { useAuth } from "../../lib/AuthContext";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -37,7 +36,7 @@ export default function LoginPage() {
       }
     } catch (err: any) {
       if (err.message?.toLowerCase().includes("fetch") || err.message?.toLowerCase().includes("network")) {
-        setError("Network error — make sure the backend server is running on http://127.0.0.1:8000.");
+        setError("Network error — make sure the backend server is running.");
       } else {
         setError(err.message || "Invalid credentials. Please check your email and password.");
       }
@@ -51,35 +50,97 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="relative flex min-h-[calc(100vh-73px)] items-center justify-center overflow-hidden bg-gradient-to-b from-[#edf4ef] via-[#f8f6f0] to-[#f1f6f2] p-6 text-[#21322a]">
-      {/* Background Botanical Overlay */}
-      <div className="pointer-events-none absolute -right-12 -top-12 h-80 w-80 opacity-[0.05] select-none">
-        <svg viewBox="0 0 200 200" fill="none" stroke="#21322a" strokeWidth="2">
-          <path d="M100 20C100 20 60 70 60 120C60 170 100 180 100 180C100 180 140 170 140 120C140 70 100 20 100 20Z" />
-          <path d="M100 20V180" />
-        </svg>
-      </div>
+    <main className="min-h-[calc(100vh-73px)] w-full bg-[#fdfbf7] text-[#21322a] font-sans antialiased overflow-x-hidden selection:bg-[#3e6b63]/20 flex flex-col lg:flex-row">
+      {/* ========================================================================= */}
+      {/* LEFT PANEL (~55% desktop, top band mobile): Translucent Image & Welcome */}
+      {/* ========================================================================= */}
+      {/* TODO: replace with final auth background image at /public/images/auth-background.jpg */}
+      <section
+        className="relative lg:w-[55%] min-h-[320px] lg:min-h-[calc(100vh-73px)] bg-cover bg-center bg-no-repeat flex flex-col justify-between p-8 lg:p-16 overflow-hidden"
+        style={{
+          backgroundImage:
+            "linear-gradient(135deg, rgba(253,251,247,0.86) 0%, rgba(237,244,239,0.80) 50%, rgba(248,246,240,0.90) 100%), url('/images/auth-background.jpg'), linear-gradient(135deg, #edf4ef 0%, #dff0e5 100%)",
+        }}
+      >
+        {/* Floating Organic Accent Blobs */}
+        <div
+          className="pointer-events-none absolute -top-12 -left-12 h-72 w-72 bg-[#dff0e5]/50 blur-3xl opacity-70"
+          style={{ borderRadius: "58% 42% 70% 30% / 45% 45% 55% 55%" }}
+        />
+        <div
+          className="pointer-events-none absolute bottom-10 -right-16 h-80 w-80 bg-[#3e6b63]/10 blur-3xl opacity-60"
+          style={{ borderRadius: "35% 65% 60% 40% / 55% 35% 65% 45%" }}
+        />
 
-      <Card className="relative z-10 w-full max-w-md rounded-3xl border border-[#d7e2db] bg-[#f9f7f1]/90 backdrop-blur-md shadow-[0_16px_50px_rgba(44,66,58,0.1)]">
-        <CardHeader className="border-b border-[#d7e2db]/70 px-6 py-5 text-center">
-          <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-2xl bg-[#edf4ef] text-[#3e6b63]">
-            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-            </svg>
-          </div>
-          <CardTitle className="text-2xl font-black text-[#21322a]">Welcome Back</CardTitle>
-          <p className="mt-1 text-xs font-medium text-[#587066]">
-            Sign in to access your care portal
+        {/* Top Branding Badge */}
+        <div className="relative z-10">
+          <Link href="/" className="inline-flex items-center gap-2 rounded-full border border-[#3e6b63]/20 bg-[#edf4ef] px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-[#23663d] shadow-sm hover:bg-[#dff0e5] transition">
+            <span className="text-base">🌿</span>
+            Appointment Care
+          </Link>
+        </div>
+
+        {/* Overlaid Welcome Hero Statement */}
+        <div className="relative z-10 my-auto max-w-lg space-y-4 py-8">
+          <h2 className="text-3xl font-black tracking-tight text-[#21322a] sm:text-5xl leading-[1.12]">
+            Welcome Back — <br />
+            <span className="text-[#3e6b63]">Your Care Continues Here</span>
+          </h2>
+          <p className="text-sm font-medium leading-relaxed text-[#42564f] max-w-md">
+            Log in to manage appointments, access AI-assisted symptom triage, sync schedules, and review personalized care plans.
           </p>
-        </CardHeader>
 
-        <CardBody className="px-6 py-5">
+          {/* Organic Pebble Callout Badge */}
+          <div
+            className="inline-flex items-center gap-3 border border-[#3e6b63]/20 bg-white/80 px-5 py-3 backdrop-blur-md shadow-sm"
+            style={{ borderRadius: "40% 60% 35% 65% / 50% 50% 50% 50%" }}
+          >
+            <span className="text-xl">🛡️</span>
+            <span className="text-xs font-bold text-[#23663d]">
+              100% Verified Specialist Portal
+            </span>
+          </div>
+        </div>
+
+        {/* Subtle Footer Note */}
+        <div className="relative z-10 text-[11px] font-semibold text-[#587066]">
+          © 2026 Appointment Care • Intelligent Health & Recovery Ecosystem
+        </div>
+      </section>
+
+      {/* ========================================================================= */}
+      {/* RIGHT PANEL (~45% desktop, main focus mobile): Organic Form Container */}
+      {/* ========================================================================= */}
+      <section className="lg:w-[45%] flex items-center justify-center p-6 lg:p-12 bg-[#fdfbf7]">
+        <div
+          className="w-full max-w-md border border-[#d7e2db] bg-white/95 p-8 backdrop-blur-md shadow-[0_16px_50px_rgba(44,66,58,0.08)] animate-in fade-in slide-in-from-bottom-4 duration-300"
+          style={{ borderRadius: "28px 14px 34px 18px" }}
+        >
+          {/* Top Form Icon & Header */}
+          <div className="mb-6 space-y-1.5 text-center">
+            <div
+              className="mx-auto flex h-12 w-12 items-center justify-center bg-[#edf4ef] text-[#3e6b63] shadow-inner"
+              style={{ borderRadius: "60% 40% 30% 70% / 60% 30% 70% 40%" }}
+            >
+              <span className="text-xl">🌿</span>
+            </div>
+            <h1 className="text-2xl font-black tracking-tight text-[#21322a]">
+              Log In to Portal
+            </h1>
+            <p className="text-xs font-medium text-[#587066]">
+              Enter your credentials to access your dashboard
+            </p>
+          </div>
+
+          {/* Error Banner */}
           {error && (
-            <div className="mb-4 rounded-2xl border border-[#e8c4c4] bg-[#fdf2f2] p-4 text-xs font-medium text-[#c94f4f] animate-in fade-in">
-              {error}
+            <div className="mb-5 flex items-start gap-2.5 rounded-2xl border border-[#e8c4c4] bg-[#fdf2f2] p-3.5 text-xs font-medium text-[#c94f4f] animate-in fade-in">
+              <span className="text-sm">⚠️</span>
+              <span>{error}</span>
             </div>
           )}
 
+          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-[11px] font-bold uppercase tracking-wider text-[#42564f]">
@@ -92,7 +153,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@example.com"
-                className="mt-1.5 w-full rounded-2xl border border-[#d7e2db] bg-white p-3 text-sm outline-none transition-all duration-200 focus:border-[#3e6b63] focus:ring-2 focus:ring-[#3e6b63]/20"
+                className="mt-1.5 w-full rounded-full border border-[#d7e2db] bg-[#f9f7f1]/50 px-4 py-3 text-sm outline-none transition-all duration-200 focus:border-[#3e6b63] focus:bg-white focus:ring-2 focus:ring-[#3e6b63]/20"
               />
             </div>
 
@@ -107,33 +168,35 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="mt-1.5 w-full rounded-2xl border border-[#d7e2db] bg-white p-3 text-sm outline-none transition-all duration-200 focus:border-[#3e6b63] focus:ring-2 focus:ring-[#3e6b63]/20"
+                className="mt-1.5 w-full rounded-full border border-[#d7e2db] bg-[#f9f7f1]/50 px-4 py-3 text-sm outline-none transition-all duration-200 focus:border-[#3e6b63] focus:bg-white focus:ring-2 focus:ring-[#3e6b63]/20"
               />
             </div>
 
             <Button
               type="submit"
               disabled={isSubmitting}
-              variant="primary"
+              variant="accent"
               size="lg"
-              className="mt-2 w-full justify-center rounded-full py-3.5"
+              className="mt-3 w-full justify-center rounded-full py-3.5 shadow-md hover:-translate-y-0.5 transition-all duration-200"
             >
-              {isSubmitting ? "Signing in…" : "Sign In"}
+              {isSubmitting ? "Signing in…" : "Log In →"}
             </Button>
           </form>
 
           {/* Divider */}
-          <div className="my-5 flex items-center gap-3">
-            <div className="h-px flex-1 bg-[#d7e2db]" />
-            <span className="text-[11px] font-semibold text-[#76857c]">OR</span>
-            <div className="h-px flex-1 bg-[#d7e2db]" />
+          <div className="my-6 flex items-center gap-3">
+            <div className="h-px flex-1 bg-[#d7e2db]/70" />
+            <span className="text-[10px] font-bold tracking-wider text-[#76857c] uppercase">
+              OR
+            </span>
+            <div className="h-px flex-1 bg-[#d7e2db]/70" />
           </div>
 
-          {/* Google Sign-In */}
+          {/* Google Sign-In Button */}
           <button
             type="button"
             onClick={handleGoogleSignIn}
-            className="flex w-full items-center justify-center gap-3 rounded-full border border-[#d7e2db] bg-white py-3 text-sm font-semibold text-[#21322a] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#f1f6f2] hover:shadow-sm"
+            className="flex w-full items-center justify-center gap-3 rounded-full border border-[#d7e2db] bg-white py-3 text-sm font-bold text-[#21322a] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#edf4ef] hover:border-[#3e6b63]"
           >
             <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -144,14 +207,15 @@ export default function LoginPage() {
             Continue with Google
           </button>
 
-          <p className="mt-6 text-center text-xs text-[#587066]">
+          {/* Footer Navigation Link */}
+          <p className="mt-6 text-center text-xs text-[#587066] font-medium">
             Don't have an account?{" "}
-            <Link href="/signup" className="font-bold text-[#3e6b63] underline hover:text-[#21322a]">
-              Sign Up
+            <Link href="/signup" className="font-bold text-[#3e6b63] hover:underline">
+              Create Account
             </Link>
           </p>
-        </CardBody>
-      </Card>
+        </div>
+      </section>
     </main>
   );
 }
