@@ -13,7 +13,7 @@ from .embedded import PostVisitSummary, PreVisitSummary, PrescriptionItem
 
 
 class SymptomForm(Document):
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     appointment_id: Annotated[PydanticObjectId, Field(alias="appointmentId")]
     symptoms_text: str = Field(alias="symptomsText")
