@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "../../../components/ui/Card";
 import { StepTracker } from "../../../components/ui/StepTracker";
@@ -18,7 +17,6 @@ export default function SymptomFirstBookingPage() {
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [permissionGranted, setPermissionGranted] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const recognitionRef = useRef<any>(null);
@@ -65,7 +63,6 @@ export default function SymptomFirstBookingPage() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
-      setPermissionGranted(true);
     } catch (err: any) {
       console.error("Microphone permission error", err);
       setErrorMsg("Microphone permission denied. Please allow microphone access in your browser to speak symptoms.");
@@ -120,7 +117,6 @@ export default function SymptomFirstBookingPage() {
         setErrorMsg("Failed to start speech recognition. You can continue by typing your symptoms.");
       }
     } else {
-      // Fallback if browser SpeechRecognition object is disabled: MediaRecorder recording state
       setIsListening(true);
       setErrorMsg("Listening via microphone... Speak your symptoms clearly.");
     }
@@ -178,22 +174,8 @@ export default function SymptomFirstBookingPage() {
         )}
 
         <Card className="rounded-3xl border border-[#d7e2db] bg-[#f9f7f1] p-6 shadow-sm">
-          <CardHeader className="px-0 pt-0 pb-4 border-b border-[#d7e2db]/70 flex items-center justify-between">
+          <CardHeader className="px-0 pt-0 pb-4 border-b border-[#d7e2db]/70">
             <CardTitle className="text-lg font-bold">What symptoms are you experiencing?</CardTitle>
-
-            {/* Voice Dictation Button */}
-            <button
-              type="button"
-              onClick={handleToggleVoiceInput}
-              className={`flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-bold transition-all duration-200 ${
-                isListening
-                  ? "border-red-500 bg-red-50 text-red-700 animate-pulse shadow-md"
-                  : "border-[#3e6b63] bg-white text-[#3e6b63] hover:bg-[#edf4ef]"
-              }`}
-            >
-              <span className="text-sm">{isListening ? "🎙️" : "🎤"}</span>
-              <span>{isListening ? "Listening... Click to Stop" : "Speak Symptoms (Voice Input)"}</span>
-            </button>
           </CardHeader>
 
           <CardBody className="px-0 pt-4 pb-0">
@@ -204,21 +186,38 @@ export default function SymptomFirstBookingPage() {
                     Detailed Symptoms Description
                   </label>
                   {isListening && (
-                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 animate-pulse">
                       <span className="h-2 w-2 rounded-full bg-red-600 animate-ping" />
-                      Live Voice Dictation Active — Speak Now
+                      Listening... Speak your symptoms
                     </span>
                   )}
                 </div>
 
-                <textarea
-                  rows={5}
-                  required
-                  value={symptomsText}
-                  onChange={(e) => setSymptomsText(e.target.value)}
-                  placeholder="Describe your symptoms, when they started, severity, triggers, or click 'Speak Symptoms' to dictate..."
-                  className="w-full rounded-2xl border border-[#d7e2db] bg-white p-4 text-sm outline-none transition-all duration-200 focus:border-[#3e6b63] focus:ring-2 focus:ring-[#3e6b63]/20"
-                />
+                {/* Textarea with Microphone Icon embedded in right corner */}
+                <div className="relative">
+                  <textarea
+                    rows={5}
+                    required
+                    value={symptomsText}
+                    onChange={(e) => setSymptomsText(e.target.value)}
+                    placeholder="Describe your symptoms, when they started, severity, triggers, or tap the microphone icon to speak..."
+                    className="w-full rounded-2xl border border-[#d7e2db] bg-white p-4 pr-14 text-sm outline-none transition-all duration-200 focus:border-[#3e6b63] focus:ring-2 focus:ring-[#3e6b63]/20"
+                  />
+
+                  {/* Microphone Icon in Right Corner */}
+                  <button
+                    type="button"
+                    onClick={handleToggleVoiceInput}
+                    title={isListening ? "Stop voice dictation" : "Dictate symptoms with voice"}
+                    className={`absolute right-3.5 top-3.5 flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 ${
+                      isListening
+                        ? "border-red-500 bg-red-50 text-red-600 animate-pulse shadow-md scale-110"
+                        : "border-[#d7e2db] bg-[#f9f7f1] text-[#3e6b63] hover:border-[#3e6b63] hover:bg-[#3e6b63] hover:text-white"
+                    }`}
+                  >
+                    <span className="text-base">{isListening ? "🎙️" : "🎤"}</span>
+                  </button>
+                </div>
               </div>
 
               <div className="flex justify-end">
