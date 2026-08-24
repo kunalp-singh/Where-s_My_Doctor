@@ -23,6 +23,7 @@ from ...schemas.patient import (
 )
 from ...services.ai import transcribe_audio_symptoms
 from ...services.patient import (
+    cancel_patient_appointment,
     confirm_appointment_hold,
     create_appointment_hold,
     create_booking_session,
@@ -133,6 +134,16 @@ async def confirm_appointment(
     _guard: dict[str, str] = Depends(require_roles(UserRole.PATIENT)),
 ) -> PatientAppointmentResponse:
     return await confirm_appointment_hold(str(patient_id), appointment_id)
+
+
+@router.delete("/appointments/{appointment_id}")
+@router.post("/appointments/{appointment_id}/cancel")
+async def cancel_appointment(
+    appointment_id: str,
+    patient_id: str = Depends(get_current_user_id),
+    _guard: dict[str, str] = Depends(require_roles(UserRole.PATIENT)),
+) -> dict[str, str]:
+    return await cancel_patient_appointment(str(patient_id), appointment_id)
 
 
 @router.post("/appointments/{appointment_id}/symptoms", response_model=SymptomSummaryResponse)

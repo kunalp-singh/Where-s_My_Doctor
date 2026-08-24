@@ -1,22 +1,21 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
+import logging
+from typing import Any
 
 from beanie import PydanticObjectId
 from fastapi import HTTPException, status
-from pymongo.errors import DuplicateKeyError
 
 from ..models.appointment import Appointment
 from ..models.booking_session import BookingSession
 from ..models.clinical import SymptomForm
-from ..models.embedded import LeaveDay
 from ..models.enums import AppointmentStatus, NotificationType, UserRole
-from ..models.user import DoctorProfile, User
+from ..models.user import User
 from ..schemas.patient import (
     BookAppointmentRequest,
     BookAppointmentResponse,
     BookingSessionResponse,
-    CreateBookingSessionRequest,
     DoctorSearchResult,
     DoctorSlot,
     PatientAppointmentResponse,
@@ -24,32 +23,60 @@ from ..schemas.patient import (
     SymptomSummaryResponse,
     UpdateBookingSessionRequest,
 )
-from .ai import build_pre_visit_summary
-from .notifications import dispatch_appointment_notification
+from ..services.ai import build_pre_visit_summary
+from ..services.notifications import dispatch_appointment_notification
+
+logger = logging.getLogger(__name__)
+
+SPECIALISATION_KEYWORDS = {
+    "Cardiology": ["chest pain", "heart", "palpitations", "shortness of breath", "blood pressure"],
+    "Dermatology": ["rash", "skin", "itch", "acne", "mole", "eczema"],
+    "Neurology": ["headache", "dizziness", "seizure", "numbness", "tingling", "migraine"],
+    "Orthopedics": ["bone", "joint", "fracture", "knee", "back pain", "sprain", "shoulder"],
+    "Pediatrics": ["child", "baby", "pediatric", "infant"],
+    "Psychiatry": ["anxiety", "depression", "panic", "mood", "stress", "sleep"],
+    "General Medicine": ["fever", "cough", "flu", "cold", "fatigue", "nausea"],
+}
 
 
 async def search_doctors(query: str | None = None) -> list[DoctorSearchResult]:
-    users = await User.find(User.role == UserRole.DOCTOR).to_list()
-    doctors: list[DoctorSearchResult] = []
-    for user in users:
-        profile = await DoctorProfile.find_one(DoctorProfile.user_id == user.id)
-        if profile is None:
-            continue
-        if query is not None and query.strip():
-            needle = query.lower()
-            if needle not in user.name.lower() and needle not in profile.specialisation.lower():
-                continue
-        doctors.append(
+    doctors = await User.find(User.role == UserRole.DOCTOR).to_list()
+    if not query:
+        return [
             DoctorSearchResult(
-                id=str(user.id),
-                name=user.name,
-                email=str(user.email),
-                specialisation=profile.specialisation,
-                working_hours=[{"dayOfWeek": hour.day_of_week, "startTime": hour.start_time.isoformat(), "endTime": hour.end_time.isoformat()} for hour in profile.working_hours],
-                slot_duration_minutes=profile.slot_duration_minutes,
+                id=str(doctor.id),
+                name=doctor.name,
+                email=doctor.email,
+                specialisation=getattr(doctor, "specialisation", None) or "General Medicine",
+                working_hours=getattr(doctor, "working_hours", []),
+                slot_duration_minutes=getattr(doctor, "slot_duration_minutes", 30),
             )
-        )
-    return doctors
+            for doctor in doctors
+        ]
+
+    lowered = query.lower()
+    matched_specs: set[str] = set()
+    for spec, keywords in SPECIALISATION_KEYWORDS.items():
+        if any(keyword in lowered for keyword in keywords) or spec.lower() in lowered:
+            matched_specs.add(spec)
+
+    results: list[DoctorSearchResult] = []
+    for doctor in doctors:
+        doc_spec = getattr(doctor, "specialisation", None) or "General Medicine"
+        doc_name = doctor.name.lower()
+
+        if doc_spec in matched_specs or query.lower() in doc_name or query.lower() in doc_spec.lower():
+            results.append(
+                DoctorSearchResult(
+                    id=str(doctor.id),
+                    name=doctor.name,
+                    email=doctor.email,
+                    specialisation=doc_spec,
+                    working_hours=getattr(doctor, "working_hours", []),
+                    slot_duration_minutes=getattr(doctor, "slot_duration_minutes", 30),
+                )
+            )
+    return results
 
 
 async def get_doctor_slots(doctor_id: str, target_date: date | None = None) -> list[DoctorSlot]:
@@ -57,40 +84,43 @@ async def get_doctor_slots(doctor_id: str, target_date: date | None = None) -> l
     if doctor is None or doctor.role != UserRole.DOCTOR:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
 
-    profile = await DoctorProfile.find_one(DoctorProfile.user_id == doctor.id)
-    if profile is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor profile not found")
+    day = target_date or date.today()
+    slot_duration = getattr(doctor, "slot_duration_minutes", 30)
 
-    leave_dates = {leave.day for leave in profile.leave_days}
-    slots: list[DoctorSlot] = []
-    now_naive = datetime.now()
-    today = now_naive.date()
+    start_dt = datetime(day.year, day.month, day.day, 9, 0, 0)
+    end_dt = datetime(day.year, day.month, day.day, 18, 0, 0)
 
-    if target_date is not None:
-        dates_to_check = [target_date]
-    else:
-        dates_to_check = [today + timedelta(days=i) for i in range(14)]
+    existing_appointments = await Appointment.find(
+        Appointment.doctor_id == doctor.id,
+        Appointment.status.in_([AppointmentStatus.HELD, AppointmentStatus.CONFIRMED]),
+    ).to_list()
 
-    for day in dates_to_check:
-        if day in leave_dates:
-            continue
-        for day_slot in profile.working_hours:
-            if day_slot.day_of_week != day.weekday():
+    busy_ranges: list[tuple[datetime, datetime]] = []
+    now = datetime.now()
+
+    for appt in existing_appointments:
+        if appt.status == AppointmentStatus.HELD:
+            if appt.hold_expires_at and appt.hold_expires_at < now:
+                appt.status = AppointmentStatus.CANCELLED
+                await appt.save()
                 continue
-            start_dt = datetime.combine(day, day_slot.start_time)
-            end_dt = datetime.combine(day, day_slot.end_time)
-            current = start_dt
-            while current + timedelta(minutes=profile.slot_duration_minutes) <= end_dt:
-                slot_end = current + timedelta(minutes=profile.slot_duration_minutes)
-                if day > today or current >= now_naive - timedelta(minutes=profile.slot_duration_minutes):
-                    booked = await Appointment.find_one(
-                        Appointment.doctor_id == doctor.id,
-                        Appointment.slot_start == current,
-                        Appointment.status != AppointmentStatus.CANCELLED,
-                    )
-                    if booked is None:
-                        slots.append(DoctorSlot(slot_start=current, slot_end=slot_end, available=True, status="available"))
-                current = slot_end
+        busy_ranges.append((appt.slot_start, appt.slot_end))
+
+    slots: list[DoctorSlot] = []
+    curr = start_dt
+
+    while curr + timedelta(minutes=slot_duration) <= end_dt:
+        nxt = curr + timedelta(minutes=slot_duration)
+        is_available = not any(b_start < nxt and b_end > curr for b_start, b_end in busy_ranges)
+        slots.append(
+            DoctorSlot(
+                slot_start=curr,
+                slot_end=nxt,
+                available=is_available,
+                status="available" if is_available else "booked",
+            )
+        )
+        curr = nxt
 
     return slots
 
@@ -100,33 +130,41 @@ async def create_appointment_hold(patient_id: str, payload: BookAppointmentReque
     if doctor is None or doctor.role != UserRole.DOCTOR:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
 
-    profile = await DoctorProfile.find_one(DoctorProfile.user_id == doctor.id)
-    if profile is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor profile not found")
+    slot_duration = getattr(doctor, "slot_duration_minutes", 30)
+    slot_end = payload.slot_start + timedelta(minutes=slot_duration)
 
-    requested_slot = payload.slot_start
-    existing = await Appointment.find_one(
+    conflicting = await Appointment.find_one(
         Appointment.doctor_id == doctor.id,
-        Appointment.slot_start == requested_slot,
-        Appointment.status != AppointmentStatus.CANCELLED,
+        Appointment.status.in_([AppointmentStatus.HELD, AppointmentStatus.CONFIRMED]),
+        Appointment.slot_start < slot_end,
+        Appointment.slot_end > payload.slot_start,
     )
-    if existing is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Selected slot is not available")
+    if conflicting is not None:
+        if conflicting.status == AppointmentStatus.HELD and conflicting.hold_expires_at:
+            if conflicting.hold_expires_at < datetime.now():
+                conflicting.status = AppointmentStatus.CANCELLED
+                await conflicting.save()
+            else:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Slot is currently held or booked")
+        else:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Slot is currently held or booked")
 
+    hold_expires = datetime.now() + timedelta(minutes=10)
     appointment = Appointment(
         patient_id=PydanticObjectId(patient_id),
         doctor_id=doctor.id,
-        slot_start=requested_slot,
-        slot_end=requested_slot + timedelta(minutes=profile.slot_duration_minutes),
+        slot_start=payload.slot_start,
+        slot_end=slot_end,
         status=AppointmentStatus.HELD,
-        hold_expires_at=datetime.now(UTC) + timedelta(minutes=15),
+        hold_expires_at=hold_expires,
     )
-    try:
-        await appointment.insert()
-    except DuplicateKeyError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Selected slot was just taken") from exc
+    await appointment.insert()
 
-    return BookAppointmentResponse(appointment_id=str(appointment.id), status=appointment.status, hold_expires_at=appointment.hold_expires_at)
+    return BookAppointmentResponse(
+        appointment_id=str(appointment.id),
+        status=appointment.status,
+        hold_expires_at=appointment.hold_expires_at,
+    )
 
 
 async def confirm_appointment_hold(patient_id: str, appointment_id: str) -> PatientAppointmentResponse:
@@ -135,17 +173,21 @@ async def confirm_appointment_hold(patient_id: str, appointment_id: str) -> Pati
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found")
     if str(appointment.patient_id) != patient_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Appointment does not belong to this patient")
-    if appointment.status != AppointmentStatus.HELD:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Appointment is not on hold")
-    if appointment.hold_expires_at is not None:
-        expires_at = appointment.hold_expires_at.replace(tzinfo=UTC) if appointment.hold_expires_at.tzinfo is None else appointment.hold_expires_at
-        if expires_at <= datetime.now(UTC):
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Appointment hold has expired")
 
-    appointment.status = AppointmentStatus.BOOKED
+    if appointment.status == AppointmentStatus.HELD:
+        if appointment.hold_expires_at and appointment.hold_expires_at < datetime.now():
+            appointment.status = AppointmentStatus.CANCELLED
+            await appointment.save()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Appointment hold expired")
+
+    appointment.status = AppointmentStatus.CONFIRMED
+    appointment.hold_expires_at = None
     await appointment.save()
 
     doctor = await User.get(appointment.doctor_id)
+    if doctor is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
+
     await dispatch_appointment_notification(
         str(appointment.id),
         NotificationType.BOOKING_CONFIRMATION,
@@ -165,6 +207,19 @@ async def confirm_appointment_hold(patient_id: str, appointment_id: str) -> Pati
         slot_end=appointment.slot_end,
         status=appointment.status,
     )
+
+
+async def cancel_patient_appointment(patient_id: str, appointment_id: str) -> dict[str, str]:
+    appointment = await Appointment.get(PydanticObjectId(appointment_id))
+    if appointment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found")
+    if str(appointment.patient_id) != patient_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Appointment does not belong to this patient")
+
+    appointment.status = AppointmentStatus.CANCELLED
+    await appointment.save()
+
+    return {"message": "Appointment cancelled successfully", "appointmentId": appointment_id}
 
 
 async def submit_symptom_form(patient_id: str, appointment_id: str, payload: SymptomSubmission) -> SymptomSummaryResponse:

@@ -140,6 +140,12 @@ export async function confirmAppointment(appointmentId: string): Promise<Patient
   return normalizeAppointmentResponse(raw);
 }
 
+export async function cancelPatientAppointment(appointmentId: string): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>(`/patients/appointments/${appointmentId}/cancel`, {
+    method: "POST",
+  });
+}
+
 export async function submitSymptoms(appointmentId: string, symptomsText: string): Promise<any> {
   return apiFetch(`/patients/appointments/${appointmentId}/symptoms`, {
     method: "POST",

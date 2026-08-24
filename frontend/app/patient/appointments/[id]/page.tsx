@@ -7,7 +7,7 @@ import { AIInsightCard } from "../../../../components/ui/AIInsightCard";
 import { Badge } from "../../../../components/ui/Badge";
 import { Button } from "../../../../components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "../../../../components/ui/Card";
-import { listPatientAppointments, PatientAppointmentResponse } from "../../../../lib/api/patients";
+import { cancelPatientAppointment, listPatientAppointments, PatientAppointmentResponse } from "../../../../lib/api/patients";
 import { useAuth } from "../../../../lib/AuthContext";
 
 export default function PatientAppointmentDetailPage() {
@@ -18,6 +18,7 @@ export default function PatientAppointmentDetailPage() {
 
   const [appointment, setAppointment] = useState<PatientAppointmentResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (authStatus === "unauthenticated") {
@@ -43,6 +44,21 @@ export default function PatientAppointmentDetailPage() {
       console.error("Error loading appointment detail", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteAppointment = async () => {
+    if (!confirm("Are you sure you want to cancel and delete this appointment?")) {
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      await cancelPatientAppointment(appointmentId);
+      router.push("/patient");
+    } catch (err: any) {
+      console.error("Failed to cancel appointment", err);
+      alert(err.message || "Could not cancel appointment.");
+      setIsDeleting(false);
     }
   };
 
@@ -76,9 +92,22 @@ export default function PatientAppointmentDetailPage() {
               Appointment #{appointment.id.slice(-6)}
             </h1>
           </div>
-          <Badge variant={appointment.status === "booked" ? "calm" : appointment.status === "completed" ? "neutral" : "urgent"}>
-            {appointment.status.toUpperCase()}
-          </Badge>
+          <div className="flex items-center gap-3">
+            <Badge variant={appointment.status === "booked" ? "calm" : appointment.status === "completed" ? "neutral" : "urgent"}>
+              {appointment.status.toUpperCase()}
+            </Badge>
+
+            {appointment.status !== "cancelled" && (
+              <button
+                type="button"
+                onClick={handleDeleteAppointment}
+                disabled={isDeleting}
+                className="rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100 transition shadow-sm"
+              >
+                {isDeleting ? "Deleting..." : "Cancel Appointment"}
+              </button>
+            )}
+          </div>
         </header>
 
         <Card className="rounded-3xl border border-[#d7e2db] bg-[#f9f7f1] p-6 shadow-sm">

@@ -7,7 +7,7 @@ import { AIInsightCard } from "../../components/ui/AIInsightCard";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
-import { listPatientAppointments, PatientAppointmentResponse } from "../../lib/api/patients";
+import { cancelPatientAppointment, listPatientAppointments, PatientAppointmentResponse } from "../../lib/api/patients";
 import { useAuth } from "../../lib/AuthContext";
 
 export default function PatientDashboardPage() {
@@ -15,6 +15,7 @@ export default function PatientDashboardPage() {
   const router = useRouter();
   const [appointments, setAppointments] = useState<PatientAppointmentResponse[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (authStatus === "unauthenticated") {
@@ -36,6 +37,22 @@ export default function PatientDashboardPage() {
       console.error("Error loading appointments", err);
     } finally {
       setLoadingData(false);
+    }
+  };
+
+  const handleCancelAppointment = async (appointmentId: string) => {
+    if (!confirm("Are you sure you want to cancel and delete this appointment?")) {
+      return;
+    }
+    setCancellingId(appointmentId);
+    try {
+      await cancelPatientAppointment(appointmentId);
+      setAppointments((prev) => prev.filter((a) => a.id !== appointmentId && a.appointmentId !== appointmentId));
+    } catch (err: any) {
+      console.error("Failed to cancel appointment", err);
+      alert(err.message || "Could not cancel appointment.");
+    } finally {
+      setCancellingId(null);
     }
   };
 
@@ -149,9 +166,19 @@ export default function PatientDashboardPage() {
                         })}
                       </p>
                     </div>
-                    <Badge variant={apt.status === "booked" ? "calm" : "neutral"}>
-                      {apt.status.toUpperCase()}
-                    </Badge>
+                    <div className="flex flex-col items-end gap-2">
+                      <Badge variant={apt.status === "booked" ? "calm" : "neutral"}>
+                        {apt.status.toUpperCase()}
+                      </Badge>
+                      <button
+                        type="button"
+                        onClick={() => handleCancelAppointment(apt.id)}
+                        disabled={cancellingId === apt.id}
+                        className="rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-[11px] font-bold text-red-600 hover:bg-red-100 transition"
+                      >
+                        {cancellingId === apt.id ? "Deleting..." : "Delete Visit"}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mt-6 border-t border-[#d7e2db]/70 pt-4 flex items-center justify-between">
