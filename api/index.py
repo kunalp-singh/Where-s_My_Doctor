@@ -1,10 +1,16 @@
 import os
 import sys
 
-# Add project root directory to sys.path for Vercel Serverless Function imports
+# Prepend project root and backend directory to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../backend")))
 
 from backend.app.main import app
 
-__all__ = ["app"]
+try:
+    from mangum import Mangum
+    handler = Mangum(app, lifespan="off")
+except Exception:
+    handler = app
+
+__all__ = ["app", "handler"]

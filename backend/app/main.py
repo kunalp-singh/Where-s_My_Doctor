@@ -6,7 +6,6 @@ import logging
 from beanie import init_beanie
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from .api.routes.admin import router as admin_router
@@ -41,7 +40,7 @@ async def init_db():
         settings = get_settings()
         client = AsyncIOMotorClient(
             settings.mongodb_uri,
-            serverSelectionTimeoutMS=5000,
+            serverSelectionTimeoutMS=3000,
             tlsAllowInvalidCertificates=True,
         )
         database = client[settings.mongodb_database_name]
