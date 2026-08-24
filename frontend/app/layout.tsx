@@ -3,7 +3,7 @@ import { AuthProvider } from '../lib/AuthContext'
 import { Navbar } from '../components/Navbar'
 
 export const metadata = {
-  title: 'Appointment Care',
+  title: 'CareConnect',
   description: 'AI-Powered Healthcare Appointment & Care Portal',
 }
 

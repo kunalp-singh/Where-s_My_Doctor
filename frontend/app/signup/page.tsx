@@ -99,14 +99,14 @@ export default function SignUpPage() {
         <div className="relative z-10">
           <Link href="/" className="inline-flex items-center gap-2 rounded-full border border-[#3e6b63]/20 bg-[#edf4ef] px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-[#23663d] shadow-sm hover:bg-[#dff0e5] transition">
             <span className="text-base">🌿</span>
-            Appointment Care
+            CareConnect
           </Link>
         </div>
 
         {/* Overlaid Welcome Hero Statement */}
         <div className="relative z-10 my-auto max-w-lg space-y-4 py-8">
           <h2 className="text-3xl font-black tracking-tight text-[#21322a] sm:text-5xl leading-[1.12]">
-            Join Appointment Care — <br />
+            Join CareConnect — <br />
             <span className="text-[#3e6b63]">Your Recovery Begins Here</span>
           </h2>
           <p className="text-sm font-medium leading-relaxed text-[#42564f] max-w-md">
@@ -127,7 +127,7 @@ export default function SignUpPage() {
 
         {/* Subtle Footer Note */}
         <div className="relative z-10 text-[11px] font-semibold text-[#587066]">
-          © 2026 Appointment Care • Intelligent Health & Recovery Ecosystem
+          © 2026 CareConnect • Intelligent Health & Recovery Ecosystem
         </div>
       </section>
 

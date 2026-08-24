@@ -76,7 +76,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Appointment Care API", lifespan=lifespan)
+app = FastAPI(title="CareConnect API", lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -118,7 +118,7 @@ app.include_router(doctor_router)
 @app.get("/api")
 async def root():
     return {
-        "message": "Appointment Care API Server is running.",
+        "message": "CareConnect API Server is running.",
         "db_initialized": _db_initialized,
         "db_error": _db_error,
     }

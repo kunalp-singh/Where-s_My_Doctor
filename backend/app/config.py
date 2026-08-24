@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    app_name: str = "Appointment Care"
+    app_name: str = "CareConnect"
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_database_name: str = "appointment_care"
     jwt_secret_key: str = Field(default="development-secret-key-at-least-32-chars", min_length=32)
@@ -22,8 +22,8 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:3000"
     google_token_encryption_secret: str = Field(default="development-encryption-secret-key-32+bytes", min_length=32)
     sendgrid_api_key: str = ""
-    sendgrid_from_email: str = "noreply@appointmentcare.local"
-    sendgrid_from_name: str = "Appointment Care"
+    sendgrid_from_email: str = "noreply@careconnect.local"
+    sendgrid_from_name: str = "CareConnect"
     celery_broker_url: str = "redis://localhost:6379/0"
     celery_result_backend: str = "redis://localhost:6379/0"
     gemini_api_key: str = ""

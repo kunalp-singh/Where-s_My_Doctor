@@ -149,7 +149,7 @@ export default function RootPage() {
             Simple 3-Step Journey
           </span>
           <h2 className="text-3xl font-black text-[#21322a] sm:text-4xl">
-            How Appointment Care Works
+            How CareConnect Works
           </h2>
           <p className="text-xs sm:text-sm text-[#587066] max-w-md mx-auto">
             From initial symptom input to full post-consultation recovery, your care path is continuous.
@@ -276,7 +276,7 @@ export default function RootPage() {
             <div className="text-3xl mb-3">🛡️</div>
             <h4 className="text-base font-extrabold text-[#23663d] mb-1">Doctor-Verified</h4>
             <p className="text-xs text-[#21322a] font-medium leading-relaxed">
-              All medical specialists on Appointment Care undergo thorough admin approval before accepting consultations.
+              All medical specialists on CareConnect undergo thorough admin approval before accepting consultations.
             </p>
           </div>
         </div>
@@ -289,7 +289,7 @@ export default function RootPage() {
         <div className="mx-auto max-w-5xl flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
           <div className="space-y-1">
             <span className="text-base font-black text-[#21322a] tracking-tight">
-              Appointment Care
+              CareConnect
             </span>
             <p className="text-xs text-[#587066] font-medium">
               Intelligent Healthcare & Recovery Ecosystem • Powered by Gemini AI
@@ -299,7 +299,7 @@ export default function RootPage() {
           <div className="flex items-center gap-6 text-xs font-bold text-[#3e6b63]">
             <Link href="/login" className="hover:underline">Login</Link>
             <Link href="/signup" className="hover:underline">Sign Up</Link>
-            <span className="text-[#587066]">© 2026 Appointment Care</span>
+            <span className="text-[#587066]">© 2026 CareConnect</span>
           </div>
         </div>
       </footer>

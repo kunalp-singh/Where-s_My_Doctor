@@ -97,19 +97,15 @@ async def get_doctor_slots(doctor_id: str, target_date: date | None = None) -> l
     ).to_list()
 
     busy_ranges: list[tuple[datetime, datetime]] = []
-    now = datetime.now().replace(tzinfo=None)
+    now = datetime.now()
 
     for appt in existing_appointments:
         if appt.status == AppointmentStatus.HELD:
-            hold_exp = appt.hold_expires_at.replace(tzinfo=None) if appt.hold_expires_at else None
-            if hold_exp and hold_exp < now:
+            if appt.hold_expires_at and appt.hold_expires_at < now:
                 appt.status = AppointmentStatus.CANCELLED
                 await appt.save()
                 continue
-        b_start = appt.slot_start.replace(tzinfo=None) if appt.slot_start else None
-        b_end = appt.slot_end.replace(tzinfo=None) if appt.slot_end else None
-        if b_start and b_end:
-            busy_ranges.append((b_start, b_end))
+        busy_ranges.append((appt.slot_start, appt.slot_end))
 
     slots: list[DoctorSlot] = []
     curr = start_dt
@@ -136,19 +132,17 @@ async def create_appointment_hold(patient_id: str, payload: BookAppointmentReque
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
 
     slot_duration = getattr(doctor, "slot_duration_minutes", 30)
-    req_start = payload.slot_start.replace(tzinfo=None) if payload.slot_start.tzinfo else payload.slot_start
-    slot_end = req_start + timedelta(minutes=slot_duration)
+    slot_end = payload.slot_start + timedelta(minutes=slot_duration)
 
     conflicting = await Appointment.find_one(
         Appointment.doctor_id == doctor.id,
         In("status", [AppointmentStatus.HELD, AppointmentStatus.BOOKED]),
         Appointment.slot_start < slot_end,
-        Appointment.slot_end > req_start,
+        Appointment.slot_end > payload.slot_start,
     )
     if conflicting is not None:
         if conflicting.status == AppointmentStatus.HELD and conflicting.hold_expires_at:
-            hold_exp = conflicting.hold_expires_at.replace(tzinfo=None) if conflicting.hold_expires_at else None
-            if hold_exp and hold_exp < datetime.now().replace(tzinfo=None):
+            if conflicting.hold_expires_at < datetime.now():
                 conflicting.status = AppointmentStatus.CANCELLED
                 await conflicting.save()
             else:
@@ -160,7 +154,7 @@ async def create_appointment_hold(patient_id: str, payload: BookAppointmentReque
     appointment = Appointment(
         patient_id=PydanticObjectId(patient_id),
         doctor_id=doctor.id,
-        slot_start=req_start,
+        slot_start=payload.slot_start,
         slot_end=slot_end,
         status=AppointmentStatus.HELD,
         hold_expires_at=hold_expires,

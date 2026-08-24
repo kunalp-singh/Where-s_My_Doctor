@@ -19,7 +19,7 @@ export function Navbar() {
     <header className="border-b border-[#d7e2db] bg-white px-6 py-4">
       <div className="mx-auto flex max-w-6xl items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-          <span className="text-xl font-bold text-[#21322a]">Appointment Care</span>
+          <span className="text-xl font-bold text-[#21322a]">CareConnect</span>
         </Link>
 
         <nav className="flex items-center gap-4">

@@ -76,7 +76,7 @@ export default function LoginPage() {
         <div className="relative z-10">
           <Link href="/" className="inline-flex items-center gap-2 rounded-full border border-[#3e6b63]/20 bg-[#edf4ef] px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-[#23663d] shadow-sm hover:bg-[#dff0e5] transition">
             <span className="text-base">🌿</span>
-            Appointment Care
+            CareConnect
           </Link>
         </div>
 
@@ -104,7 +104,7 @@ export default function LoginPage() {
 
         {/* Subtle Footer Note */}
         <div className="relative z-10 text-[11px] font-semibold text-[#587066]">
-          © 2026 Appointment Care • Intelligent Health & Recovery Ecosystem
+          © 2026 CareConnect • Intelligent Health & Recovery Ecosystem
         </div>
       </section>
 

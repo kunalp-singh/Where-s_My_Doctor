@@ -1,6 +1,6 @@
-# Appointment Care
+# CareConnect
 
-Appointment Care is a healthcare appointment and follow-up management platform for patients, doctors, and administrators. It supports booking workflows, symptom intake, doctor notes, leave-day management, Google Calendar linking, and reminder jobs.
+CareConnect is a healthcare appointment and follow-up management platform for patients, doctors, and administrators. It supports booking workflows, symptom intake, doctor notes, leave-day management, Google Calendar linking, and reminder jobs.
 
 ## Architecture
 
