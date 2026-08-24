@@ -1,9 +1,13 @@
 {
   "version": 2,
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/index.py"
+  "experimentalServices": {
+    "web": {
+      "entrypoint": "frontend",
+      "routePrefix": "/"
+    },
+    "api": {
+      "entrypoint": "api/index.py",
+      "routePrefix": "/api"
     }
-  ]
+  }
 }
