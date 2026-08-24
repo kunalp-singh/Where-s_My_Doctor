@@ -93,7 +93,7 @@ async def get_doctor_slots(doctor_id: str, target_date: date | None = None) -> l
 
     existing_appointments = await Appointment.find(
         Appointment.doctor_id == doctor.id,
-        In("status", [AppointmentStatus.HELD, AppointmentStatus.BOOKED]),
+        In("status", [AppointmentStatus.HELD, AppointmentStatus.BOOKED, AppointmentStatus.COMPLETED]),
     ).to_list()
 
     busy_ranges: list[tuple[datetime, datetime]] = []
@@ -101,18 +101,23 @@ async def get_doctor_slots(doctor_id: str, target_date: date | None = None) -> l
 
     for appt in existing_appointments:
         if appt.status == AppointmentStatus.HELD:
-            if appt.hold_expires_at and appt.hold_expires_at < now:
+            h_exp = appt.hold_expires_at.replace(tzinfo=None) if appt.hold_expires_at else None
+            if h_exp and h_exp < now:
                 appt.status = AppointmentStatus.CANCELLED
                 await appt.save()
                 continue
-        busy_ranges.append((appt.slot_start, appt.slot_end))
+
+        b_start = appt.slot_start.replace(tzinfo=None) if appt.slot_start else appt.slot_start
+        b_end = appt.slot_end.replace(tzinfo=None) if appt.slot_end else appt.slot_end
+        busy_ranges.append((b_start, b_end))
 
     slots: list[DoctorSlot] = []
     curr = start_dt
 
     while curr + timedelta(minutes=slot_duration) <= end_dt:
         nxt = curr + timedelta(minutes=slot_duration)
-        is_available = not any(b_start < nxt and b_end > curr for b_start, b_end in busy_ranges)
+        is_past = (day == date.today() and nxt <= now)
+        is_available = not is_past and not any(b_start < nxt and b_end > curr for b_start, b_end in busy_ranges)
         slots.append(
             DoctorSlot(
                 slot_start=curr,
@@ -127,39 +132,83 @@ async def get_doctor_slots(doctor_id: str, target_date: date | None = None) -> l
 
 
 async def create_appointment_hold(patient_id: str, payload: BookAppointmentRequest) -> BookAppointmentResponse:
+    from pymongo.errors import DuplicateKeyError
+
     doctor = await User.get(PydanticObjectId(payload.doctor_id))
     if doctor is None or doctor.role != UserRole.DOCTOR:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
 
     slot_duration = getattr(doctor, "slot_duration_minutes", 30)
-    slot_end = payload.slot_start + timedelta(minutes=slot_duration)
+    req_slot_start = payload.slot_start.replace(tzinfo=None) if payload.slot_start else payload.slot_start
+    slot_end = req_slot_start + timedelta(minutes=slot_duration)
+    now = datetime.now()
 
     conflicting = await Appointment.find_one(
         Appointment.doctor_id == doctor.id,
-        In("status", [AppointmentStatus.HELD, AppointmentStatus.BOOKED]),
+        In("status", [AppointmentStatus.HELD, AppointmentStatus.BOOKED, AppointmentStatus.COMPLETED]),
         Appointment.slot_start < slot_end,
-        Appointment.slot_end > payload.slot_start,
+        Appointment.slot_end > req_slot_start,
     )
     if conflicting is not None:
         if conflicting.status == AppointmentStatus.HELD and conflicting.hold_expires_at:
-            if conflicting.hold_expires_at < datetime.now():
+            h_exp = conflicting.hold_expires_at.replace(tzinfo=None)
+            if h_exp < now:
                 conflicting.status = AppointmentStatus.CANCELLED
                 await conflicting.save()
+            elif str(conflicting.patient_id) == patient_id:
+                return BookAppointmentResponse(
+                    appointment_id=str(conflicting.id),
+                    status=conflicting.status,
+                    hold_expires_at=conflicting.hold_expires_at,
+                )
             else:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Slot is currently held or booked")
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Slot is currently held by another patient.")
         else:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Slot is currently held or booked")
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Slot is already booked or completed.")
 
-    hold_expires = datetime.now() + timedelta(minutes=10)
+    hold_expires = now + timedelta(minutes=10)
     appointment = Appointment(
         patient_id=PydanticObjectId(patient_id),
         doctor_id=doctor.id,
-        slot_start=payload.slot_start,
+        slot_start=req_slot_start,
         slot_end=slot_end,
         status=AppointmentStatus.HELD,
         hold_expires_at=hold_expires,
     )
-    await appointment.insert()
+
+    try:
+        await appointment.insert()
+    except Exception as exc:
+        if "duplicate key error" in str(exc).lower() or isinstance(exc, DuplicateKeyError):
+            existing = await Appointment.find_one(
+                Appointment.doctor_id == doctor.id,
+                Appointment.slot_start == req_slot_start,
+            )
+            if existing:
+                if str(existing.patient_id) == patient_id:
+                    existing.status = AppointmentStatus.HELD
+                    existing.hold_expires_at = hold_expires
+                    await existing.save()
+                    return BookAppointmentResponse(
+                        appointment_id=str(existing.id),
+                        status=existing.status,
+                        hold_expires_at=existing.hold_expires_at,
+                    )
+                elif existing.status in [AppointmentStatus.BOOKED, AppointmentStatus.COMPLETED]:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This slot has already been booked by another patient.")
+                elif existing.status == AppointmentStatus.HELD and existing.hold_expires_at and existing.hold_expires_at.replace(tzinfo=None) > now:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This slot is currently held by another patient.")
+                else:
+                    existing.patient_id = PydanticObjectId(patient_id)
+                    existing.status = AppointmentStatus.HELD
+                    existing.hold_expires_at = hold_expires
+                    await existing.save()
+                    return BookAppointmentResponse(
+                        appointment_id=str(existing.id),
+                        status=existing.status,
+                        hold_expires_at=existing.hold_expires_at,
+                    )
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Slot conflict. Please select another slot.")
 
     return BookAppointmentResponse(
         appointment_id=str(appointment.id),
