@@ -258,6 +258,47 @@ async def list_patient_appointments(patient_id: str) -> list[PatientAppointmentR
         doctor = doctor_map.get(str(appointment.doctor_id))
         if doctor is None:
             continue
+
+        form = await SymptomForm.find_one(SymptomForm.appointment_id == appointment.id)
+        notes = await VisitNotes.find_one(VisitNotes.appointment_id == appointment.id)
+
+        symptom_summary_dict = None
+        if form and form.ai_pre_visit_summary:
+            if isinstance(form.ai_pre_visit_summary, dict):
+                symptom_summary_dict = form.ai_pre_visit_summary
+            else:
+                symptom_summary_dict = {
+                    "urgency": getattr(form.ai_pre_visit_summary, "urgency", "low"),
+                    "chief_complaint": getattr(form.ai_pre_visit_summary, "chief_complaint", getattr(form.ai_pre_visit_summary, "chiefComplaint", "")),
+                    "follow_up_questions": getattr(form.ai_pre_visit_summary, "follow_up_questions", []),
+                }
+
+        visit_notes_dict = None
+        ai_post_visit_dict = None
+        if notes:
+            prescriptions_list = []
+            for p in notes.prescription or []:
+                prescriptions_list.append({
+                    "medicationName": getattr(p, "medication_name", None) or getattr(p, "medicationName", ""),
+                    "dosage": getattr(p, "dosage", ""),
+                    "frequency": getattr(p, "frequency", ""),
+                    "durationDays": getattr(p, "duration_days", None) or getattr(p, "durationDays", 7),
+                })
+            visit_notes_dict = {
+                "diagnosis": getattr(notes, "diagnosis", "") or "",
+                "notes": notes.doctor_notes or "",
+                "prescriptions": prescriptions_list,
+            }
+            if notes.ai_post_visit_summary:
+                if isinstance(notes.ai_post_visit_summary, dict):
+                    ai_post_visit_dict = notes.ai_post_visit_summary
+                else:
+                    ai_post_visit_dict = {
+                        "summary": getattr(notes.ai_post_visit_summary, "summary", ""),
+                        "follow_up_steps": getattr(notes.ai_post_visit_summary, "follow_up_steps", []),
+                        "red_flags": getattr(notes.ai_post_visit_summary, "red_flags", []),
+                    }
+
         responses.append(
             PatientAppointmentResponse(
                 appointment_id=str(appointment.id),
@@ -266,6 +307,9 @@ async def list_patient_appointments(patient_id: str) -> list[PatientAppointmentR
                 slot_start=appointment.slot_start,
                 slot_end=appointment.slot_end,
                 status=appointment.status,
+                symptom_summary=symptom_summary_dict,
+                visit_notes=visit_notes_dict,
+                ai_post_visit_summary=ai_post_visit_dict,
             )
         )
     return sorted(responses, key=lambda item: item.slot_start)

@@ -107,12 +107,6 @@ async def submit_visit_notes(
     if appointment is None or appointment.doctor_id != doctor.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor appointment not found")
 
-    summary = PostVisitSummary(
-        summary=f"Visit completed for {appointment.slot_start.date()}.",
-        follow_up_steps=["Continue medication as directed", "Schedule a follow-up if symptoms persist"],
-        red_flags=["Shortness of breath", "Chest pain", "Sudden confusion"],
-    )
-
     prescriptions: list[PrescriptionItem] = []
     for p in payload.prescriptions:
         if isinstance(p, PrescriptionItem):
@@ -128,16 +122,30 @@ async def submit_visit_notes(
                 )
             )
 
+    # Invoke Gemini AI for patient-friendly post-visit summary
+    from .ai import build_post_visit_summary
+    from .notifications import dispatch_appointment_notification
+    from ..models.enums import NotificationType
+
+    ai_dict = build_post_visit_summary(payload.diagnosis, payload.notes, prescriptions)
+    summary = PostVisitSummary(
+        summary=ai_dict["summary"],
+        follow_up_steps=ai_dict["follow_up_steps"],
+        red_flags=ai_dict["red_flags"],
+    )
+
     existing = await VisitNotes.find_one(VisitNotes.appointment_id == appointment.id)
     if existing is None:
         existing = VisitNotes(
             appointment_id=appointment.id,
+            diagnosis=payload.diagnosis,
             doctor_notes=payload.notes,
             prescription=prescriptions,
             ai_post_visit_summary=summary,
         )
         await existing.insert()
     else:
+        existing.diagnosis = payload.diagnosis
         existing.doctor_notes = payload.notes
         existing.prescription = prescriptions
         existing.ai_post_visit_summary = summary
@@ -145,6 +153,21 @@ async def submit_visit_notes(
 
     appointment.status = AppointmentStatus.COMPLETED
     await appointment.save()
+
+    # Dispatch email notification to patient alerting that Post-Visit Care Summary is ready
+    try:
+        await dispatch_appointment_notification(
+            str(appointment.id),
+            NotificationType.REMINDER,
+            subject="Your CareConnect Post-Visit Summary & Prescription Details",
+            body=(
+                f"Hello,\n\nYour consultation with Dr. {doctor.name} is complete.\n\n"
+                f"Summary: {summary.summary}\n\n"
+                "Log into your CareConnect Patient Portal to view your complete medical record and medication checklist."
+            ),
+        )
+    except Exception as n_err:
+        logger.warning("Failed to dispatch post-visit notification email: %s", n_err)
 
     return await get_visit_detail(doctor_id, appointment_id)
 

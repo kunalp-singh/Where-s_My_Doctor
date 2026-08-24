@@ -60,7 +60,7 @@ class SymptomSummaryResponse(BaseModel):
 
 
 class PatientAppointmentResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     appointment_id: str = Field(alias="appointmentId")
     doctor_id: str = Field(alias="doctorId")
@@ -68,6 +68,9 @@ class PatientAppointmentResponse(BaseModel):
     slot_start: datetime = Field(alias="slotStart")
     slot_end: datetime = Field(alias="slotEnd")
     status: AppointmentStatus
+    symptom_summary: dict[str, Any] | None = Field(default=None, alias="symptomSummary")
+    visit_notes: dict[str, Any] | None = Field(default=None, alias="visitNotes")
+    ai_post_visit_summary: dict[str, Any] | None = Field(default=None, alias="aiPostVisitSummary")
 
 
 class CreateBookingSessionRequest(BaseModel):

@@ -32,10 +32,16 @@ export interface PatientAppointmentResponse {
     followUpQuestions: string[];
   };
   visitNotes?: {
-    chiefComplaint?: string;
     diagnosis?: string;
     notes?: string;
     prescriptions?: Array<{ medicationName: string; dosage: string; frequency: string }>;
+  };
+  aiPostVisitSummary?: {
+    summary: string;
+    followUpSteps?: string[];
+    follow_up_steps?: string[];
+    redFlags?: string[];
+    red_flags?: string[];
   };
 }
 

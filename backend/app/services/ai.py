@@ -154,3 +154,86 @@ Required JSON Keys:
         ],
         "recommended_specialisation": spec,
     }
+
+
+def build_post_visit_summary(diagnosis: str, notes: str, prescriptions: list[Any]) -> dict[str, Any]:
+    """Generates a patient-friendly summary, medication schedule, and follow-up steps via Gemini AI."""
+    settings = get_settings()
+
+    prescription_text_items = []
+    for p in prescriptions:
+        if isinstance(p, dict):
+            m_name = p.get("medicationName") or p.get("medication_name", "")
+            dos = p.get("dosage", "")
+            freq = p.get("frequency", "")
+            dur = p.get("durationDays") or p.get("duration_days") or 7
+            prescription_text_items.append(f"- {m_name} ({dos}, {freq} for {dur} days)")
+        else:
+            m_name = getattr(p, "medication_name", None) or getattr(p, "medicationName", "")
+            dos = getattr(p, "dosage", "")
+            freq = getattr(p, "frequency", "")
+            dur = getattr(p, "duration_days", None) or getattr(p, "durationDays", 7)
+            prescription_text_items.append(f"- {m_name} ({dos}, {freq} for {dur} days)")
+
+    rx_summary = "\n".join(prescription_text_items) if prescription_text_items else "No prescription recorded."
+
+    clinical_input = (
+        f"Diagnosis: {diagnosis or 'Routine consultation'}\n"
+        f"Clinical Notes: {notes or 'No extra notes provided'}\n"
+        f"Prescriptions:\n{rx_summary}"
+    )
+
+    if settings.gemini_api_key:
+        try:
+            client = genai.Client(api_key=settings.gemini_api_key)
+            prompt = (
+                "You are an empathetic medical assistant. Convert these clinical notes into a clear, patient-friendly summary "
+                "with medication schedule and follow-up steps:\n\n"
+                f"{clinical_input}\n\n"
+                "Return ONLY a JSON object with these exact keys:\n"
+                '- "summary": A clear, reassuring 2-3 sentence patient-friendly summary of the diagnosis and treatment plan.\n'
+                '- "follow_up_steps": Array of 2-3 actionable advice steps for the patient.\n'
+                '- "red_flags": Array of 2-3 warning symptoms where the patient should seek immediate medical care.'
+            )
+
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(response_mime_type="application/json"),
+            )
+
+            import json
+
+            data = json.loads(response.text)
+            logger.info("Gemini post-visit AI summary generated successfully.")
+            return {
+                "summary": str(data.get("summary", f"Visit completed. Diagnosis: {diagnosis or 'Routine Consultation'}.")),
+                "follow_up_steps": data.get("follow_up_steps", [
+                    "Take prescribed medications exactly as directed.",
+                    "Rest and maintain proper hydration.",
+                    "Contact the clinic if symptoms worsen.",
+                ]),
+                "red_flags": data.get("red_flags", [
+                    "High fever that does not respond to medication",
+                    "Difficulty breathing or chest discomfort",
+                    "Sudden severe pain or confusion",
+                ]),
+            }
+        except Exception as exc:
+            logger.error("Gemini post-visit AI summary generation failed: %s", exc)
+
+    # Deterministic fallback when Gemini API key is missing or fails
+    return {
+        "summary": f"Your consultation is complete. Diagnosis: {diagnosis or 'Routine Consultation'}. Please follow the prescribed care instructions below.",
+        "follow_up_steps": [
+            "Take prescribed medications as instructed.",
+            "Maintain hydration and get adequate rest.",
+            "Schedule a follow-up appointment if symptoms persist after completing medication.",
+        ],
+        "red_flags": [
+            "Shortness of breath or chest pain",
+            "Persistent high fever",
+            "Sudden severe pain or allergic reaction",
+        ],
+    }
+

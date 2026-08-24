@@ -154,6 +154,22 @@ export default function PatientAppointmentDetailPage() {
           />
         )}
 
+        {appointment.aiPostVisitSummary && (
+          <AIInsightCard
+            title="Post-Visit Patient Care Summary (AI Generated)"
+            summary={appointment.aiPostVisitSummary.summary}
+            insights={[
+              ...((appointment.aiPostVisitSummary.followUpSteps || appointment.aiPostVisitSummary.follow_up_steps || []).map(
+                (step) => `Follow-up Step: ${step}`
+              )),
+              ...((appointment.aiPostVisitSummary.redFlags || appointment.aiPostVisitSummary.red_flags || []).map(
+                (flag) => `Warning Sign: ${flag}`
+              )),
+            ]}
+            tone="calm"
+          />
+        )}
+
         {appointment.visitNotes && (
           <Card className="rounded-3xl border border-[#d7e2db] bg-[#f9f7f1] p-6 shadow-sm space-y-4">
             <CardHeader className="px-0 pt-0 pb-3 border-b border-[#d7e2db]">
