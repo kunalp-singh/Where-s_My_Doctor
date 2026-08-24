@@ -31,12 +31,12 @@ export default function RootPage() {
       {/* ========================================================================= */}
       {/* 1. HERO SECTION (Full-bleed translucent background image + organic blobs) */}
       {/* ========================================================================= */}
-      {/* TODO: replace with final hero background image at /public/images/hero-background.jpg */}
+      {/* Full-bleed translucent hero background image */}
       <section
         className="relative min-h-[85vh] w-full bg-cover bg-center bg-no-repeat flex flex-col justify-between pt-12 pb-16 px-6"
         style={{
           backgroundImage:
-            "linear-gradient(135deg, rgba(253,251,247,0.88) 0%, rgba(237,244,239,0.85) 50%, rgba(248,246,240,0.92) 100%), url('/images/hero-background.jpg')",
+            "linear-gradient(135deg, rgba(253,251,247,0.82) 0%, rgba(237,244,239,0.78) 50%, rgba(248,246,240,0.85) 100%), url('/images/hero-background.jpg')",
         }}
       >
         {/* Floating Organic Background Accents (Peanut / Blob SVG shapes) */}
