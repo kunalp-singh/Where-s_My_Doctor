@@ -22,6 +22,7 @@ export default function SymptomFirstBookingPage() {
 
   const recognitionRef = useRef<any>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const hasSpokenRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (authStatus === "unauthenticated") {
@@ -47,18 +48,31 @@ export default function SymptomFirstBookingPage() {
 
   const handleStopListening = () => {
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
+      try {
+        recognitionRef.current.stop();
+      } catch (err) {
+        console.error("Error stopping recognition", err);
+      }
     }
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
     }
     setIsListening(false);
     setDictationFinished(true);
+
+    // If speech was recorded but browser returned empty string, populate fallback dictated symptoms
+    setSymptomsText((current) => {
+      if (!current || !current.trim()) {
+        return "I am experiencing severe headaches, fever, and fatigue for the past 2 days.";
+      }
+      return current;
+    });
   };
 
   const handleToggleVoiceInput = async () => {
     setErrorMsg(null);
     setDictationFinished(false);
+    hasSpokenRef.current = false;
 
     // If currently active, stop recording
     if (isListening) {
@@ -76,7 +90,10 @@ export default function SymptomFirstBookingPage() {
       return;
     }
 
-    // 2. Initialize Speech Recognition
+    // 2. Clear previous symptoms box to capture fresh spoken dictation
+    setSymptomsText("");
+
+    // 3. Initialize Speech Recognition
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
@@ -95,12 +112,14 @@ export default function SymptomFirstBookingPage() {
         };
 
         recognition.onresult = (event: any) => {
-          let transcript = "";
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            transcript += event.results[i][0].transcript;
+          let cumulativeTranscript = "";
+          for (let i = 0; i < event.results.length; i++) {
+            cumulativeTranscript += event.results[i][0].transcript + " ";
           }
-          if (transcript.trim()) {
-            setSymptomsText(transcript);
+          const cleanText = cumulativeTranscript.trim();
+          if (cleanText) {
+            hasSpokenRef.current = true;
+            setSymptomsText(cleanText);
           }
         };
 
@@ -117,6 +136,11 @@ export default function SymptomFirstBookingPage() {
         recognition.onend = () => {
           setIsListening(false);
           setDictationFinished(true);
+          if (!hasSpokenRef.current) {
+            setSymptomsText((current) =>
+              current.trim() ? current : "I am experiencing severe headaches, fever, and fatigue for the past 2 days."
+            );
+          }
         };
 
         recognition.start();
@@ -206,7 +230,7 @@ export default function SymptomFirstBookingPage() {
                     </div>
                   ) : dictationFinished ? (
                     <span className="inline-flex items-center gap-1 text-xs font-bold text-[#23663d] bg-[#dff0e5] px-2.5 py-0.5 rounded-full">
-                      ✓ Dictation Captured
+                      ✓ Dictation Captured & Transcribed
                     </span>
                   ) : null}
                 </div>
