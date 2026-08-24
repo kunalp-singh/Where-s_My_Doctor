@@ -17,6 +17,7 @@ export default function SymptomFirstBookingPage() {
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [dictationFinished, setDictationFinished] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const recognitionRef = useRef<any>(null);
@@ -44,18 +45,24 @@ export default function SymptomFirstBookingPage() {
     };
   }, []);
 
+  const handleStopListening = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+    }
+    setIsListening(false);
+    setDictationFinished(true);
+  };
+
   const handleToggleVoiceInput = async () => {
     setErrorMsg(null);
+    setDictationFinished(false);
 
-    // Stop listening if currently active
+    // If currently active, stop recording
     if (isListening) {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-      }
-      setIsListening(false);
+      handleStopListening();
       return;
     }
 
@@ -84,6 +91,7 @@ export default function SymptomFirstBookingPage() {
         recognition.onstart = () => {
           setIsListening(true);
           setErrorMsg(null);
+          setDictationFinished(false);
         };
 
         recognition.onresult = (event: any) => {
@@ -108,6 +116,7 @@ export default function SymptomFirstBookingPage() {
 
         recognition.onend = () => {
           setIsListening(false);
+          setDictationFinished(true);
         };
 
         recognition.start();
@@ -127,6 +136,9 @@ export default function SymptomFirstBookingPage() {
     if (!symptomsText.trim()) {
       setErrorMsg("Please enter your symptoms to continue.");
       return;
+    }
+    if (isListening) {
+      handleStopListening();
     }
     setErrorMsg(null);
     setIsSubmitting(true);
@@ -185,15 +197,21 @@ export default function SymptomFirstBookingPage() {
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-[#42564f]">
                     Detailed Symptoms Description
                   </label>
-                  {isListening && (
-                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 animate-pulse">
+
+                  {/* Recording Status / Dictation Finished Indicator */}
+                  {isListening ? (
+                    <div className="flex items-center gap-2 rounded-full border border-red-300 bg-red-50 px-3 py-1 text-xs font-bold text-red-600 animate-pulse">
                       <span className="h-2 w-2 rounded-full bg-red-600 animate-ping" />
-                      Listening... Speak your symptoms
+                      <span>🔴 Recording Live — Speak Now</span>
+                    </div>
+                  ) : dictationFinished ? (
+                    <span className="inline-flex items-center gap-1 text-xs font-bold text-[#23663d] bg-[#dff0e5] px-2.5 py-0.5 rounded-full">
+                      ✓ Dictation Captured
                     </span>
-                  )}
+                  ) : null}
                 </div>
 
-                {/* Textarea with Microphone Icon embedded in right corner */}
+                {/* Textarea with Microphone Icon & Stop Recording Button embedded in right corner */}
                 <div className="relative">
                   <textarea
                     rows={5}
@@ -201,23 +219,57 @@ export default function SymptomFirstBookingPage() {
                     value={symptomsText}
                     onChange={(e) => setSymptomsText(e.target.value)}
                     placeholder="Describe your symptoms, when they started, severity, triggers, or tap the microphone icon to speak..."
-                    className="w-full rounded-2xl border border-[#d7e2db] bg-white p-4 pr-14 text-sm outline-none transition-all duration-200 focus:border-[#3e6b63] focus:ring-2 focus:ring-[#3e6b63]/20"
+                    className={`w-full rounded-2xl border bg-white p-4 text-sm outline-none transition-all duration-200 ${
+                      isListening
+                        ? "border-red-400 ring-2 ring-red-400/40 pr-36"
+                        : "border-[#d7e2db] pr-14 focus:border-[#3e6b63] focus:ring-2 focus:ring-[#3e6b63]/20"
+                    }`}
                   />
 
-                  {/* Microphone Icon in Right Corner */}
-                  <button
-                    type="button"
-                    onClick={handleToggleVoiceInput}
-                    title={isListening ? "Stop voice dictation" : "Dictate symptoms with voice"}
-                    className={`absolute right-3.5 top-3.5 flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 ${
-                      isListening
-                        ? "border-red-500 bg-red-50 text-red-600 animate-pulse shadow-md scale-110"
-                        : "border-[#d7e2db] bg-[#f9f7f1] text-[#3e6b63] hover:border-[#3e6b63] hover:bg-[#3e6b63] hover:text-white"
-                    }`}
-                  >
-                    <span className="text-base">{isListening ? "🎙️" : "🎤"}</span>
-                  </button>
+                  {/* Right Corner Control Box */}
+                  <div className="absolute right-3 top-3 flex items-center gap-1.5">
+                    {/* Explicit Finished Speaking Button when Recording */}
+                    {isListening && (
+                      <button
+                        type="button"
+                        onClick={handleStopListening}
+                        className="rounded-full bg-red-600 px-3 py-1 text-[11px] font-bold text-white shadow-md hover:bg-red-700 transition"
+                      >
+                        ✓ Done Speaking
+                      </button>
+                    )}
+
+                    {/* Microphone Icon Button */}
+                    <button
+                      type="button"
+                      onClick={handleToggleVoiceInput}
+                      title={isListening ? "Click to stop recording" : "Click to speak symptoms with voice"}
+                      className={`flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 ${
+                        isListening
+                          ? "border-red-500 bg-red-100 text-red-600 animate-pulse shadow-md scale-105"
+                          : "border-[#d7e2db] bg-[#f9f7f1] text-[#3e6b63] hover:border-[#3e6b63] hover:bg-[#3e6b63] hover:text-white"
+                      }`}
+                    >
+                      <span className="text-base">{isListening ? "⏹️" : "🎤"}</span>
+                    </button>
+                  </div>
                 </div>
+
+                {/* Soundwave Animation while recording */}
+                {isListening && (
+                  <div className="mt-2 flex items-center justify-between rounded-2xl border border-red-200 bg-red-50/70 px-4 py-2.5 text-xs text-red-800">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold">🎙️ Voice Dictation Active:</span>
+                      <span className="text-red-700">Speak into your mic. Click "✓ Done Speaking" when finished.</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="h-4 w-1 bg-red-500 animate-pulse" />
+                      <span className="h-6 w-1 bg-red-600 animate-bounce" />
+                      <span className="h-3 w-1 bg-red-400 animate-pulse" />
+                      <span className="h-5 w-1 bg-red-600 animate-bounce" />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end">
