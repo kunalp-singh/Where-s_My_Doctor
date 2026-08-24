@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "../../../components/ui/Card";
 import { StepTracker } from "../../../components/ui/StepTracker";
-import { createBookingSession } from "../../../lib/api/patients";
+import { createBookingSession, transcribeAudioSymptoms } from "../../../lib/api/patients";
 import { useAuth } from "../../../lib/AuthContext";
 
 export default function SymptomFirstBookingPage() {
@@ -17,12 +17,14 @@ export default function SymptomFirstBookingPage() {
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [dictationFinished, setDictationFinished] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const recognitionRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   const mediaStreamRef = useRef<MediaStream | null>(null);
-  const hasSpokenRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (authStatus === "unauthenticated") {
@@ -34,11 +36,18 @@ export default function SymptomFirstBookingPage() {
     }
   }, [authStatus, user, router]);
 
-  // Clean up media streams and speech recognition on unmount
+  // Clean up media streams on unmount
   useEffect(() => {
     return () => {
       if (recognitionRef.current) {
-        recognitionRef.current.stop();
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        try {
+          mediaRecorderRef.current.stop();
+        } catch (e) {}
       }
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
@@ -46,43 +55,75 @@ export default function SymptomFirstBookingPage() {
     };
   }, []);
 
+  const processAudioWithGemini = async (audioBlob: Blob, mimeType: string) => {
+    setIsTranscribing(true);
+    setErrorMsg(null);
+
+    try {
+      // Convert Blob to Base64 string
+      const reader = new FileReader();
+      reader.readAsDataURL(audioBlob);
+      reader.onloadend = async () => {
+        const base64Audio = reader.result as string;
+        try {
+          const res = await transcribeAudioSymptoms(base64Audio, mimeType);
+          if (res.transcript && res.transcript.trim()) {
+            setSymptomsText(res.transcript.trim());
+            setDictationFinished(true);
+          } else {
+            setErrorMsg("Could not transcribe audio clearly. Please try speaking again or type your symptoms.");
+          }
+        } catch (err: any) {
+          console.error("Gemini transcription error", err);
+          setErrorMsg("Gemini LLM transcription failed. Please try speaking again or type manually.");
+        } finally {
+          setIsTranscribing(false);
+        }
+      };
+    } catch (err: any) {
+      console.error("Audio conversion error", err);
+      setIsTranscribing(false);
+    }
+  };
+
   const handleStopListening = () => {
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
-      } catch (err) {
-        console.error("Error stopping recognition", err);
-      }
+      } catch (e) {}
     }
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (e) {}
+    } else if (audioChunksRef.current.length > 0) {
+      const mime = mediaRecorderRef.current?.mimeType || "audio/webm";
+      const audioBlob = new Blob(audioChunksRef.current, { type: mime });
+      processAudioWithGemini(audioBlob, mime);
+    }
+
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
     }
-    setIsListening(false);
-    setDictationFinished(true);
 
-    // If speech was recorded but browser returned empty string, populate fallback dictated symptoms
-    setSymptomsText((current) => {
-      if (!current || !current.trim()) {
-        return "I am experiencing severe headaches, fever, and fatigue for the past 2 days.";
-      }
-      return current;
-    });
+    setIsListening(false);
   };
 
   const handleToggleVoiceInput = async () => {
     setErrorMsg(null);
     setDictationFinished(false);
-    hasSpokenRef.current = false;
 
-    // If currently active, stop recording
+    // If currently active, stop recording & transcribe with Gemini LLM
     if (isListening) {
       handleStopListening();
       return;
     }
 
-    // 1. Trigger native Browser Microphone Permission Dialog
+    // 1. Request Browser Microphone Stream
+    let stream: MediaStream;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
     } catch (err: any) {
       console.error("Microphone permission error", err);
@@ -90,10 +131,42 @@ export default function SymptomFirstBookingPage() {
       return;
     }
 
-    // 2. Clear previous symptoms box to capture fresh spoken dictation
+    // Clear previous text box for fresh dictation
     setSymptomsText("");
+    audioChunksRef.current = [];
 
-    // 3. Initialize Speech Recognition
+    // 2. Initialize MediaRecorder for Gemini LLM Audio Upload
+    try {
+      const options = MediaRecorder.isTypeSupported("audio/webm")
+        ? { mimeType: "audio/webm" }
+        : MediaRecorder.isTypeSupported("audio/mp4")
+        ? { mimeType: "audio/mp4" }
+        : undefined;
+
+      const mediaRecorder = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const mime = mediaRecorder.mimeType || "audio/webm";
+        const audioBlob = new Blob(audioChunksRef.current, { type: mime });
+        if (audioBlob.size > 0) {
+          processAudioWithGemini(audioBlob, mime);
+        }
+      };
+
+      mediaRecorder.start(250); // collect 250ms chunks
+      setIsListening(true);
+    } catch (err) {
+      console.error("MediaRecorder start error", err);
+    }
+
+    // 3. Optional Client-side Real-Time Speech Recognition for instant UI preview
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
@@ -105,53 +178,22 @@ export default function SymptomFirstBookingPage() {
         recognition.interimResults = true;
         recognition.lang = "en-US";
 
-        recognition.onstart = () => {
-          setIsListening(true);
-          setErrorMsg(null);
-          setDictationFinished(false);
-        };
-
         recognition.onresult = (event: any) => {
-          let cumulativeTranscript = "";
+          let previewText = "";
           for (let i = 0; i < event.results.length; i++) {
-            cumulativeTranscript += event.results[i][0].transcript + " ";
+            previewText += event.results[i][0].transcript + " ";
           }
-          const cleanText = cumulativeTranscript.trim();
-          if (cleanText) {
-            hasSpokenRef.current = true;
-            setSymptomsText(cleanText);
+          if (previewText.trim()) {
+            setSymptomsText(previewText.trim());
           }
         };
 
         recognition.onerror = (event: any) => {
-          console.error("Speech recognition error", event.error);
-          if (event.error !== "no-speech") {
-            setIsListening(false);
-            if (event.error === "not-allowed") {
-              setErrorMsg("Microphone access blocked. Please allow microphone permissions in your browser address bar.");
-            }
-          }
-        };
-
-        recognition.onend = () => {
-          setIsListening(false);
-          setDictationFinished(true);
-          if (!hasSpokenRef.current) {
-            setSymptomsText((current) =>
-              current.trim() ? current : "I am experiencing severe headaches, fever, and fatigue for the past 2 days."
-            );
-          }
+          console.error("Client speech recognition error", event.error);
         };
 
         recognition.start();
-      } catch (err: any) {
-        console.error("Failed to start speech recognition", err);
-        setIsListening(false);
-        setErrorMsg("Failed to start speech recognition. You can continue by typing your symptoms.");
-      }
-    } else {
-      setIsListening(true);
-      setErrorMsg("Listening via microphone... Speak your symptoms clearly.");
+      } catch (e) {}
     }
   };
 
@@ -222,27 +264,36 @@ export default function SymptomFirstBookingPage() {
                     Detailed Symptoms Description
                   </label>
 
-                  {/* Recording Status / Dictation Finished Indicator */}
+                  {/* Recording / Gemini AI Transcribing Status */}
                   {isListening ? (
                     <div className="flex items-center gap-2 rounded-full border border-red-300 bg-red-50 px-3 py-1 text-xs font-bold text-red-600 animate-pulse">
                       <span className="h-2 w-2 rounded-full bg-red-600 animate-ping" />
-                      <span>🔴 Recording Live — Speak Now</span>
+                      <span>🔴 Recording Audio for Gemini LLM — Speak Now</span>
+                    </div>
+                  ) : isTranscribing ? (
+                    <div className="flex items-center gap-2 rounded-full border border-[#3e6b63] bg-[#dff0e5] px-3 py-1 text-xs font-bold text-[#23663d] animate-pulse">
+                      <span className="h-3 w-3 animate-spin rounded-full border-2 border-[#23663d] border-t-transparent" />
+                      <span>✨ Transcribing Audio with Gemini LLM...</span>
                     </div>
                   ) : dictationFinished ? (
                     <span className="inline-flex items-center gap-1 text-xs font-bold text-[#23663d] bg-[#dff0e5] px-2.5 py-0.5 rounded-full">
-                      ✓ Dictation Captured & Transcribed
+                      ✓ Gemini AI Transcribed Voice
                     </span>
                   ) : null}
                 </div>
 
-                {/* Textarea with Microphone Icon & Stop Recording Button embedded in right corner */}
+                {/* Textarea with Microphone Icon & Control Box embedded in right corner */}
                 <div className="relative">
                   <textarea
                     rows={5}
                     required
                     value={symptomsText}
                     onChange={(e) => setSymptomsText(e.target.value)}
-                    placeholder="Describe your symptoms, when they started, severity, triggers, or tap the microphone icon to speak..."
+                    placeholder={
+                      isTranscribing
+                        ? "✨ Gemini LLM is processing your recorded audio..."
+                        : "Describe your symptoms, when they started, severity, triggers, or tap the microphone icon to speak..."
+                    }
                     className={`w-full rounded-2xl border bg-white p-4 text-sm outline-none transition-all duration-200 ${
                       isListening
                         ? "border-red-400 ring-2 ring-red-400/40 pr-36"
@@ -266,15 +317,18 @@ export default function SymptomFirstBookingPage() {
                     {/* Microphone Icon Button */}
                     <button
                       type="button"
+                      disabled={isTranscribing}
                       onClick={handleToggleVoiceInput}
-                      title={isListening ? "Click to stop recording" : "Click to speak symptoms with voice"}
+                      title={isListening ? "Click to stop recording and send to Gemini" : "Click to record voice for Gemini LLM"}
                       className={`flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 ${
                         isListening
                           ? "border-red-500 bg-red-100 text-red-600 animate-pulse shadow-md scale-105"
+                          : isTranscribing
+                          ? "border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed"
                           : "border-[#d7e2db] bg-[#f9f7f1] text-[#3e6b63] hover:border-[#3e6b63] hover:bg-[#3e6b63] hover:text-white"
                       }`}
                     >
-                      <span className="text-base">{isListening ? "⏹️" : "🎤"}</span>
+                      <span className="text-base">{isListening ? "⏹️" : isTranscribing ? "⌛" : "🎤"}</span>
                     </button>
                   </div>
                 </div>
@@ -283,8 +337,8 @@ export default function SymptomFirstBookingPage() {
                 {isListening && (
                   <div className="mt-2 flex items-center justify-between rounded-2xl border border-red-200 bg-red-50/70 px-4 py-2.5 text-xs text-red-800">
                     <div className="flex items-center gap-2">
-                      <span className="font-bold">🎙️ Voice Dictation Active:</span>
-                      <span className="text-red-700">Speak into your mic. Click "✓ Done Speaking" when finished.</span>
+                      <span className="font-bold">🎙️ Voice Recording Active:</span>
+                      <span className="text-red-700">Speak your symptoms clearly. Click "✓ Done Speaking" to transcribe with Gemini LLM.</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="h-4 w-1 bg-red-500 animate-pulse" />
@@ -299,12 +353,16 @@ export default function SymptomFirstBookingPage() {
               <div className="flex justify-end">
                 <Button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isTranscribing}
                   variant="accent"
                   size="lg"
                   className="rounded-full shadow-lg"
                 >
-                  {isSubmitting ? "Analyzing Symptoms with AI..." : "Analyze Symptoms & Find Specialists →"}
+                  {isSubmitting
+                    ? "Analyzing Symptoms with AI..."
+                    : isTranscribing
+                    ? "Transcribing Audio..."
+                    : "Analyze Symptoms & Find Specialists →"}
                 </Button>
               </div>
             </form>

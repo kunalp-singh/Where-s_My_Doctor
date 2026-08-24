@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from datetime import date
 
 from fastapi import APIRouter, Depends
@@ -7,6 +8,8 @@ from fastapi import APIRouter, Depends
 from ...deps import get_current_user_id, require_roles
 from ...models.enums import UserRole
 from ...schemas.patient import (
+    AudioTranscriptionRequest,
+    AudioTranscriptionResponse,
     BookAppointmentRequest,
     BookAppointmentResponse,
     BookingSessionResponse,
@@ -18,6 +21,7 @@ from ...schemas.patient import (
     SymptomSummaryResponse,
     UpdateBookingSessionRequest,
 )
+from ...services.ai import transcribe_audio_symptoms
 from ...services.patient import (
     confirm_appointment_hold,
     create_appointment_hold,
@@ -33,6 +37,20 @@ from ...services.patient import (
 )
 
 router = APIRouter(prefix="/patients", tags=["patient"])
+
+
+@router.post("/transcribe-audio", response_model=AudioTranscriptionResponse)
+async def transcribe_patient_audio(
+    payload: AudioTranscriptionRequest,
+    _patient_id: str = Depends(get_current_user_id),
+    _guard: dict[str, str] = Depends(require_roles(UserRole.PATIENT)),
+) -> AudioTranscriptionResponse:
+    raw_b64 = payload.audio_base64
+    if "," in raw_b64:
+        raw_b64 = raw_b64.split(",", 1)[1]
+    audio_bytes = base64.b64decode(raw_b64)
+    transcript = transcribe_audio_symptoms(audio_bytes, payload.mime_type)
+    return AudioTranscriptionResponse(transcript=transcript)
 
 
 @router.post("/booking-sessions", response_model=BookingSessionResponse)

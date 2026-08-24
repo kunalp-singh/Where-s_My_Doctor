@@ -92,3 +92,16 @@ class BookingSessionResponse(BaseModel):
     recommended_specialisation: str = Field(default="General Medicine", alias="recommendedSpecialisation")
     doctor_id: str | None = Field(default=None, alias="doctorId")
     appointment_id: str | None = Field(default=None, alias="appointmentId")
+
+
+class AudioTranscriptionRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    audio_base64: str = Field(alias="audioBase64")
+    mime_type: str = Field(default="audio/webm", alias="mimeType")
+
+
+class AudioTranscriptionResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    transcript: str

@@ -62,6 +62,16 @@ function normalizeAppointmentResponse(data: any): PatientAppointmentResponse {
   };
 }
 
+export async function transcribeAudioSymptoms(
+  audioBase64: string,
+  mimeType: string = "audio/webm"
+): Promise<{ transcript: string }> {
+  return apiFetch<{ transcript: string }>("/patients/transcribe-audio", {
+    method: "POST",
+    body: JSON.stringify({ audioBase64, mimeType }),
+  });
+}
+
 export async function searchDoctors(query?: string): Promise<DoctorSearchResult[]> {
   const endpoint = query ? `/patients/doctors?query=${encodeURIComponent(query)}` : "/patients/doctors";
   return apiFetch<DoctorSearchResult[]>(endpoint);

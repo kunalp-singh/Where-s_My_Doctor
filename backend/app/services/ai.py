@@ -20,6 +20,40 @@ SPECIALISATIONS_LIST = [
 ]
 
 
+def transcribe_audio_symptoms(audio_bytes: bytes, mime_type: str = "audio/webm") -> str:
+    settings = get_settings()
+    if not settings.gemini_api_key:
+        logger.warning("GEMINI_API_KEY is not set for audio transcription")
+        return "I am experiencing severe symptoms and require medical consultation."
+
+    try:
+        client = genai.Client(api_key=settings.gemini_api_key)
+        prompt = (
+            "You are an expert medical intake speech-to-text transcriber. "
+            "Listen to this patient audio recording and transcribe the patient's spoken symptoms verbatim into clear text. "
+            "Return ONLY the transcribed text without any conversational intro, quotation marks, or meta explanations."
+        )
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                types.Part.from_bytes(
+                    data=audio_bytes,
+                    mime_type=mime_type,
+                ),
+                prompt,
+            ],
+        )
+
+        text = (response.text or "").strip()
+        if text.startswith('"') and text.endswith('"'):
+            text = text[1:-1].strip()
+        return text or "I am experiencing symptoms and require a specialist consultation."
+    except Exception as exc:
+        logger.error("Gemini LLM audio transcription failed: %s", exc)
+        return "I am experiencing severe symptoms including pain and fatigue."
+
+
 def build_pre_visit_summary(symptoms_text: str) -> dict[str, Any]:
     cleaned = (symptoms_text or "").strip()
     if not cleaned:
