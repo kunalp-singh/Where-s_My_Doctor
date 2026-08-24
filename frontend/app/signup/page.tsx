@@ -6,7 +6,7 @@ import React, { useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { useAuth } from "../../lib/AuthContext";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
 const specialisations = [
   "General Medicine",
