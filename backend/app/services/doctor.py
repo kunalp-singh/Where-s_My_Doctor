@@ -9,7 +9,7 @@ from ..models.appointment import Appointment
 from ..models.clinical import SymptomForm, VisitNotes
 from ..models.embedded import LeaveDay, PostVisitSummary, PrescriptionItem, WorkingHour
 from ..models.enums import AppointmentStatus, UserRole
-from ..models.user import User
+from ..models.user import DoctorProfile, User
 from ..schemas.doctor import (
     DoctorAppointmentItem,
     DoctorNotesResponse,
@@ -26,17 +26,19 @@ async def get_doctor_schedule(doctor_id: str) -> DoctorScheduleResponse:
     if doctor is None or doctor.role != UserRole.DOCTOR:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
 
+    profile = await DoctorProfile.find_one(DoctorProfile.user_id == doctor.id)
+
     hours = [
         WorkingHour(day_of_week=w.day_of_week, start_time=w.start_time, end_time=w.end_time)
-        for w in getattr(doctor, "working_hours", [])
+        for w in (profile.working_hours if profile else []) or []
     ]
-    leaves = [LeaveDay(day=l.day) for l in getattr(doctor, "leave_days", [])]
+    leaves = [LeaveDay(day=l.day) for l in (profile.leave_days if profile else []) or []]
 
     return DoctorScheduleResponse(
         doctor_id=str(doctor.id),
-        specialisation=getattr(doctor, "specialisation", None) or "General Medicine",
+        specialisation=(profile.specialisation if profile else None) or "General Medicine",
         working_hours=hours,
-        slot_duration_minutes=getattr(doctor, "slot_duration_minutes", 30),
+        slot_duration_minutes=(profile.slot_duration_minutes if profile else None) or 30,
         leave_days=leaves,
     )
 
@@ -46,13 +48,26 @@ async def update_doctor_schedule(doctor_id: str, payload: DoctorScheduleUpdate) 
     if doctor is None or doctor.role != UserRole.DOCTOR:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
 
-    if payload.working_hours is not None:
-        doctor.working_hours = payload.working_hours
-    if payload.slot_duration_minutes is not None:
-        doctor.slot_duration_minutes = payload.slot_duration_minutes
+    profile = await DoctorProfile.find_one(DoctorProfile.user_id == doctor.id)
+    is_new = profile is None
+    if is_new:
+        profile = DoctorProfile(
+            user_id=doctor.id,
+            specialisation="General Medicine",
+            slot_duration_minutes=30,
+        )
 
-    await doctor.save()
+    if payload.working_hours is not None:
+        profile.working_hours = payload.working_hours
+    if payload.slot_duration_minutes is not None:
+        profile.slot_duration_minutes = payload.slot_duration_minutes
+
+    if is_new:
+        await profile.insert()
+    else:
+        await profile.save()
     return await get_doctor_schedule(doctor_id)
+
 
 
 async def list_doctor_appointments(doctor_id: str) -> list[DoctorAppointmentItem]:
@@ -93,7 +108,7 @@ async def list_doctor_appointments(doctor_id: str) -> list[DoctorAppointmentItem
                 chief_complaint=chief,
             )
         )
-    return sorted(results, key=lambda item: item.slot_start)
+    return sorted(results, key=lambda item: item.slot_start, reverse=True)
 
 
 async def submit_visit_notes(
@@ -122,7 +137,7 @@ async def submit_visit_notes(
                 )
             )
 
-    # Invoke Gemini AI for patient-friendly post-visit summary
+    # Invoke Gemini AI for patient-friendly post-visit summary (sync function)
     from .ai import build_post_visit_summary
     from .notifications import dispatch_appointment_notification
     from ..models.enums import NotificationType
@@ -190,13 +205,29 @@ async def get_visit_detail(doctor_id: str, appointment_id: str) -> DoctorNotesRe
     if form:
         symptoms_text = form.symptoms_text
         if isinstance(form.ai_pre_visit_summary, dict):
-            ai_summary = form.ai_pre_visit_summary
+            src = form.ai_pre_visit_summary
         elif form.ai_pre_visit_summary:
-            ai_summary = {
+            src = {
                 "urgency": getattr(form.ai_pre_visit_summary, "urgency", "low"),
                 "chief_complaint": getattr(form.ai_pre_visit_summary, "chief_complaint", ""),
                 "follow_up_questions": getattr(form.ai_pre_visit_summary, "follow_up_questions", []),
                 "recommended_specialisation": getattr(form.ai_pre_visit_summary, "recommended_specialisation", "General Medicine"),
+            }
+        else:
+            src = None
+
+        if src is not None:
+            cc = src.get("chiefComplaint") or src.get("chief_complaint") or ""
+            fq = src.get("followUpQuestions") or src.get("follow_up_questions") or []
+            rs = src.get("recommendedSpecialisation") or src.get("recommended_specialisation") or "General Medicine"
+            ai_summary = {
+                "urgency": src.get("urgency", "low"),
+                "chief_complaint": cc,
+                "chiefComplaint": cc,
+                "follow_up_questions": fq,
+                "followUpQuestions": fq,
+                "recommended_specialisation": rs,
+                "recommendedSpecialisation": rs,
             }
 
     return DoctorNotesResponse(
@@ -205,7 +236,9 @@ async def get_visit_detail(doctor_id: str, appointment_id: str) -> DoctorNotesRe
         status=appointment.status,
         symptoms_text=symptoms_text,
         ai_pre_visit_summary=ai_summary,
+        diagnosis=notes.diagnosis if notes else None,
         doctor_notes=notes.doctor_notes if notes else "",
-        prescription=notes.prescription if notes else [],
+        prescriptions=notes.prescription if notes else [],
         ai_post_visit_summary=notes.ai_post_visit_summary if notes else None,
     )
+

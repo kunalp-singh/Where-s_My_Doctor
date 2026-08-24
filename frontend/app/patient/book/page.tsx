@@ -23,6 +23,7 @@ export default function SymptomFirstBookingPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
     if (authStatus === "unauthenticated") {
@@ -37,6 +38,11 @@ export default function SymptomFirstBookingPage() {
   // Clean up media streams on unmount
   useEffect(() => {
     return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+      }
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
         try {
           mediaRecorderRef.current.stop();
@@ -89,65 +95,20 @@ export default function SymptomFirstBookingPage() {
       } catch (e) {}
     } else if (audioChunksRef.current.length > 0) {
       const mime = mediaRecorderRef.current?.mimeType || "audio/webm";
-      const cleanMime = mime.split(";")[0];
+      const cleanMime = mime.split(";")[0].trim();
       const audioBlob = new Blob(audioChunksRef.current, { type: mime });
       processAudio(audioBlob, cleanMime);
     }
 
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
     }
 
     setIsListening(false);
   };
 
-  const recognitionRef = useRef<any>(null);
-
-  const handleToggleVoiceInput = async () => {
-    setErrorMsg(null);
-
-    if (isListening) {
-      handleStopListening();
-      return;
-    }
-
-    // Try Browser Native Web Speech API for real-time live transcription
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      try {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = "en-IN";
-
-        recognition.onresult = (event: any) => {
-          let transcript = "";
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            transcript += event.results[i][0].transcript;
-          }
-          if (transcript.trim()) {
-            setSymptomsText(transcript);
-          }
-        };
-
-        recognition.onerror = (event: any) => {
-          console.warn("Web Speech Recognition error:", event.error);
-        };
-
-        recognition.onend = () => {
-          setIsListening(false);
-        };
-
-        recognition.start();
-        recognitionRef.current = recognition;
-        setIsListening(true);
-        return;
-      } catch (e) {
-        console.warn("Failed to initialize Web Speech Recognition, falling back to MediaRecorder", e);
-      }
-    }
-
-    // Fallback to MediaRecorder + Gemini AI Audio Transcription
+  const startMediaRecorderFallback = async () => {
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -155,10 +116,10 @@ export default function SymptomFirstBookingPage() {
     } catch (err: any) {
       console.error("Microphone error", err);
       setErrorMsg("Microphone permission denied. Please allow microphone access in your browser.");
+      setIsListening(false);
       return;
     }
 
-    setSymptomsText("");
     audioChunksRef.current = [];
 
     try {
@@ -179,7 +140,7 @@ export default function SymptomFirstBookingPage() {
 
       mediaRecorder.onstop = () => {
         const rawMime = mediaRecorder.mimeType || "audio/webm";
-        const cleanMime = rawMime.split(";")[0].strip ? rawMime.split(";")[0].strip() : rawMime.split(";")[0];
+        const cleanMime = rawMime.split(";")[0].trim();
         const audioBlob = new Blob(audioChunksRef.current, { type: rawMime });
         if (audioBlob.size > 0) {
           processAudio(audioBlob, cleanMime);
@@ -190,7 +151,62 @@ export default function SymptomFirstBookingPage() {
       setIsListening(true);
     } catch (err) {
       console.error("MediaRecorder start error", err);
+      setIsListening(false);
     }
+  };
+
+  const handleToggleVoiceInput = async () => {
+    setErrorMsg(null);
+
+    if (isListening) {
+      handleStopListening();
+      return;
+    }
+
+    // Try Browser Native Web Speech API for real-time live transcription
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      try {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = "en-IN";
+
+        recognition.onresult = (event: any) => {
+          let transcript = "";
+          for (let i = 0; i < event.results.length; i++) {
+            transcript += event.results[i][0].transcript + " ";
+          }
+          if (transcript.trim()) {
+            setSymptomsText(transcript.trim());
+          }
+        };
+
+        recognition.onerror = (event: any) => {
+          console.warn("Web Speech Recognition error:", event.error);
+          if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+            setErrorMsg("Microphone permission denied. Please allow microphone access.");
+          } else {
+            // Fallback to MediaRecorder on other errors
+            startMediaRecorderFallback();
+          }
+        };
+
+        recognition.onend = () => {
+          setIsListening(false);
+        };
+
+        recognition.start();
+        recognitionRef.current = recognition;
+        setIsListening(true);
+        return;
+      } catch (e) {
+        console.warn("Failed to initialize Web Speech Recognition, falling back to MediaRecorder", e);
+      }
+    }
+
+    // Fallback to MediaRecorder + Gemini AI Audio Transcription
+    await startMediaRecorderFallback();
   };
 
   const handleSubmitSymptoms = async (e: React.FormEvent) => {

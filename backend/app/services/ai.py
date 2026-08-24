@@ -24,38 +24,42 @@ def transcribe_audio_symptoms(audio_bytes: bytes, mime_type: str = "audio/webm")
     settings = get_settings()
     if not settings.gemini_api_key:
         logger.warning("GEMINI_API_KEY is not set for audio transcription")
-        return "I am experiencing severe symptoms and require medical consultation."
+        return ""
 
     clean_mime = (mime_type or "audio/webm").split(";")[0].strip().lower()
     if clean_mime not in ["audio/webm", "audio/mp4", "audio/ogg", "audio/wav", "audio/mp3", "audio/m4a", "audio/aac"]:
         clean_mime = "audio/webm"
 
-    try:
-        client = genai.Client(api_key=settings.gemini_api_key)
-        prompt = (
-            "You are an expert medical intake speech-to-text transcriber. "
-            "Listen to this patient audio recording and transcribe the patient's spoken symptoms verbatim into clear text. "
-            "Return ONLY the transcribed text without any conversational intro, quotation marks, or meta explanations."
-        )
+    client = genai.Client(api_key=settings.gemini_api_key)
+    prompt = (
+        "You are an expert medical intake speech-to-text transcriber. "
+        "Listen to this patient audio recording and transcribe the patient's spoken symptoms verbatim into clear text. "
+        "Return ONLY the transcribed text without any conversational intro, quotation marks, or meta explanations."
+    )
 
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=[
-                types.Part.from_bytes(
-                    data=audio_bytes,
-                    mime_type=clean_mime,
-                ),
-                prompt,
-            ],
-        )
+    models_to_try = ["gemini-3.7-flash", "gemini-flash-latest", "gemini-2.5-flash"]
+    for model_name in models_to_try:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=[
+                    types.Part.from_bytes(
+                        data=audio_bytes,
+                        mime_type=clean_mime,
+                    ),
+                    prompt,
+                ],
+            )
 
-        text = (response.text or "").strip()
-        if text.startswith('"') and text.endswith('"'):
-            text = text[1:-1].strip()
-        return text or "I am experiencing symptoms and require a specialist consultation."
-    except Exception as exc:
-        logger.error("Gemini LLM audio transcription failed: %s", exc)
-        return "I am experiencing severe symptoms including pain and fatigue."
+            text = (response.text or "").strip()
+            if text.startswith('"') and text.endswith('"'):
+                text = text[1:-1].strip()
+            if text:
+                return text
+        except Exception as exc:
+            logger.warning("Model %s transcription failed: %s", model_name, exc)
+
+    return ""
 
 
 def build_pre_visit_summary(symptoms_text: str) -> dict[str, Any]:
@@ -91,36 +95,51 @@ Required JSON Keys:
 - "follow_up_questions": array of exactly 3 relevant medical questions
 - "recommended_specialisation": exactly one item chosen from the medical specialisation list that best fits the symptoms.
 """
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json"
-                ),
-            )
+            models_to_try = ["gemini-3.7-flash", "gemini-flash-latest", "gemini-2.5-flash"]
+            data = None
+            for model_name in models_to_try:
+                try:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json"
+                        ),
+                    )
+                    import json
+                    data = json.loads(response.text)
+                    break
+                except Exception as m_err:
+                    logger.warning("Pre-visit summary with %s failed: %s", model_name, m_err)
 
-            import json
+            if data:
+                rec_spec = data.get("recommended_specialisation", "General Medicine")
+                if rec_spec not in SPECIALISATIONS_LIST:
+                    rec_spec = "General Medicine"
 
-            data = json.loads(response.text)
-            rec_spec = data.get("recommended_specialisation", "General Medicine")
-            if rec_spec not in SPECIALISATIONS_LIST:
-                rec_spec = "General Medicine"
-
-            return {
-                "urgency": str(data.get("urgency", "medium")).lower(),
-                "chief_complaint": str(data.get("chief_complaint", cleaned[:160])),
-                "follow_up_questions": data.get(
+                urgency_val = str(data.get("urgency", "medium")).lower()
+                chief_val = str(data.get("chief_complaint", cleaned[:160]))
+                follow_ups_val = data.get(
                     "follow_up_questions",
                     [
                         "Can you describe the severity and duration of your symptoms?",
                         "Have you experienced similar issues previously?",
                         "Are there any aggravating or relieving factors?",
                     ],
-                )[:3],
-                "recommended_specialisation": rec_spec,
-            }
+                )[:3]
+                return {
+                    # snake_case (used internally by Python)
+                    "urgency": urgency_val,
+                    "chief_complaint": chief_val,
+                    "follow_up_questions": follow_ups_val,
+                    "recommended_specialisation": rec_spec,
+                    # camelCase aliases (expected by frontend JSON)
+                    "chiefComplaint": chief_val,
+                    "followUpQuestions": follow_ups_val,
+                    "recommendedSpecialisation": rec_spec,
+                }
         except Exception as exc:
-            logger.warning("Gemini API call failed or timed out; using fallback logic: %s", exc)
+            logger.warning("Gemini API call failed; using fallback logic: %s", exc)
 
     # Deterministic fallback (used ONLY on API failure/timeout or missing key)
     lowered = cleaned.lower()
@@ -149,6 +168,7 @@ Required JSON Keys:
         urgency = "high"
 
     return {
+        # snake_case (internal Python usage)
         "urgency": urgency,
         "chief_complaint": cleaned[:160],
         "follow_up_questions": [
@@ -157,6 +177,14 @@ Required JSON Keys:
             "Are there other symptoms or triggers you think are related?",
         ],
         "recommended_specialisation": spec,
+        # camelCase aliases (frontend JSON)
+        "chiefComplaint": cleaned[:160],
+        "followUpQuestions": [
+            "Can you describe the severity and duration of the main symptom?",
+            "Have you had this problem before, and if so, how often?",
+            "Are there other symptoms or triggers you think are related?",
+        ],
+        "recommendedSpecialisation": spec,
     }
 
 
@@ -200,29 +228,36 @@ def build_post_visit_summary(diagnosis: str, notes: str, prescriptions: list[Any
                 '- "red_flags": Array of 2-3 warning symptoms where the patient should seek immediate medical care.'
             )
 
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(response_mime_type="application/json"),
-            )
+            models_to_try = ["gemini-3.7-flash", "gemini-flash-latest", "gemini-2.5-flash"]
+            data = None
+            for model_name in models_to_try:
+                try:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(response_mime_type="application/json"),
+                    )
+                    import json
+                    data = json.loads(response.text)
+                    break
+                except Exception as m_err:
+                    logger.warning("Post-visit summary with %s failed: %s", model_name, m_err)
 
-            import json
-
-            data = json.loads(response.text)
-            logger.info("Gemini post-visit AI summary generated successfully.")
-            return {
-                "summary": str(data.get("summary", f"Visit completed. Diagnosis: {diagnosis or 'Routine Consultation'}.")),
-                "follow_up_steps": data.get("follow_up_steps", [
-                    "Take prescribed medications exactly as directed.",
-                    "Rest and maintain proper hydration.",
-                    "Contact the clinic if symptoms worsen.",
-                ]),
-                "red_flags": data.get("red_flags", [
-                    "High fever that does not respond to medication",
-                    "Difficulty breathing or chest discomfort",
-                    "Sudden severe pain or confusion",
-                ]),
-            }
+            if data:
+                logger.info("Gemini post-visit AI summary generated successfully.")
+                return {
+                    "summary": str(data.get("summary", f"Visit completed. Diagnosis: {diagnosis or 'Routine Consultation'}.")),
+                    "follow_up_steps": data.get("follow_up_steps", [
+                        "Take prescribed medications exactly as directed.",
+                        "Rest and maintain proper hydration.",
+                        "Contact the clinic if symptoms worsen.",
+                    ]),
+                    "red_flags": data.get("red_flags", [
+                        "High fever that does not respond to medication",
+                        "Difficulty breathing or chest discomfort",
+                        "Sudden severe pain or confusion",
+                    ]),
+                }
         except Exception as exc:
             logger.error("Gemini post-visit AI summary generation failed: %s", exc)
 

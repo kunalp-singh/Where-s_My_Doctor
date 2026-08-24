@@ -55,7 +55,7 @@ export default function DoctorConsultationPage() {
       if (res.diagnosis) setDiagnosis(res.diagnosis);
       if (res.doctorNotes || res.notes) setNotes(res.doctorNotes || res.notes || "");
       
-      const savedPrescriptions = res.prescription || res.prescriptions;
+      const savedPrescriptions = res.prescriptions;
       if (savedPrescriptions && savedPrescriptions.length > 0) {
         setPrescriptions(
           savedPrescriptions.map((p) => ({

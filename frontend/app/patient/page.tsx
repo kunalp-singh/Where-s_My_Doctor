@@ -32,7 +32,10 @@ export default function PatientDashboardPage() {
   const loadAppointments = async () => {
     try {
       const data = await listPatientAppointments();
-      setAppointments(data);
+      const sorted = [...data].sort(
+        (a, b) => new Date(b.slotStart).getTime() - new Date(a.slotStart).getTime()
+      );
+      setAppointments(sorted);
     } catch (err) {
       console.error("Error loading appointments", err);
     } finally {

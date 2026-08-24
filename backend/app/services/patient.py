@@ -10,9 +10,9 @@ from fastapi import HTTPException, status
 
 from ..models.appointment import Appointment
 from ..models.booking_session import BookingSession
-from ..models.clinical import SymptomForm
-from ..models.enums import AppointmentStatus, NotificationType, UserRole
-from ..models.user import User
+from ..models.clinical import SymptomForm, VisitNotes
+from ..models.enums import AppointmentStatus, NotificationType, UserRole, UserStatus
+from ..models.user import DoctorProfile, User
 from ..schemas.patient import (
     BookAppointmentRequest,
     BookAppointmentResponse,
@@ -38,6 +38,99 @@ SPECIALISATION_KEYWORDS = {
     "Psychiatry": ["anxiety", "depression", "panic", "mood", "stress", "sleep"],
     "General Medicine": ["fever", "cough", "flu", "cold", "fatigue", "nausea"],
 }
+
+
+def _build_prescription_list(prescription_items: list[Any]) -> list[dict[str, Any]]:
+    """Normalize a list of PrescriptionItem models or dicts into a consistent camelCase list."""
+    result = []
+    for p in prescription_items or []:
+        if isinstance(p, dict):
+            m_name = p.get("medicationName") or p.get("medication_name") or ""
+            dos = p.get("dosage") or ""
+            freq = p.get("frequency") or ""
+            dur = p.get("durationDays") or p.get("duration_days") or 7
+            instr = p.get("instructions") or ""
+        else:
+            m_name = getattr(p, "medication_name", None) or getattr(p, "medicationName", "") or ""
+            dos = getattr(p, "dosage", "") or ""
+            freq = getattr(p, "frequency", "") or ""
+            dur = getattr(p, "duration_days", None) or getattr(p, "durationDays", 7) or 7
+            instr = getattr(p, "instructions", "") or ""
+        if m_name:
+            result.append({
+                "medicationName": m_name,
+                "dosage": dos,
+                "frequency": freq,
+                "durationDays": int(dur),
+                "instructions": instr,
+            })
+    return result
+
+
+def _build_appointment_summaries(
+    form: SymptomForm | None,
+    notes: VisitNotes | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None]:
+    """Return (symptom_summary_dict, visit_notes_dict, ai_post_visit_dict) for a patient response."""
+    symptom_summary_dict: dict[str, Any] | None = None
+    if form and form.ai_pre_visit_summary:
+        if isinstance(form.ai_pre_visit_summary, dict):
+            src = form.ai_pre_visit_summary
+        else:
+            src = {
+                "urgency": getattr(form.ai_pre_visit_summary, "urgency", "low"),
+                "chief_complaint": getattr(form.ai_pre_visit_summary, "chief_complaint", ""),
+                "chiefComplaint": getattr(form.ai_pre_visit_summary, "chief_complaint", ""),
+                "follow_up_questions": getattr(form.ai_pre_visit_summary, "follow_up_questions", []),
+                "followUpQuestions": getattr(form.ai_pre_visit_summary, "follow_up_questions", []),
+            }
+        # Always expose both forms for cross-compatibility
+        cc = src.get("chiefComplaint") or src.get("chief_complaint") or ""
+        fq = src.get("followUpQuestions") or src.get("follow_up_questions") or []
+        symptom_summary_dict = {
+            "urgency": src.get("urgency", "low"),
+            "chief_complaint": cc,
+            "chiefComplaint": cc,
+            "follow_up_questions": fq,
+            "followUpQuestions": fq,
+            "recommended_specialisation": src.get("recommendedSpecialisation") or src.get("recommended_specialisation") or "General Medicine",
+            "recommendedSpecialisation": src.get("recommendedSpecialisation") or src.get("recommended_specialisation") or "General Medicine",
+        }
+
+    visit_notes_dict: dict[str, Any] | None = None
+    ai_post_visit_dict: dict[str, Any] | None = None
+    if notes:
+        prescriptions_list = _build_prescription_list(notes.prescription or [])
+        visit_notes_dict = {
+            "diagnosis": getattr(notes, "diagnosis", "") or "",
+            "notes": notes.doctor_notes or "",
+            "prescriptions": prescriptions_list,
+        }
+        if notes.ai_post_visit_summary:
+            pv = notes.ai_post_visit_summary
+            if isinstance(pv, dict):
+                follow_ups = pv.get("followUpSteps") or pv.get("follow_up_steps") or []
+                red_flags = pv.get("redFlags") or pv.get("red_flags") or []
+                ai_post_visit_dict = {
+                    "summary": pv.get("summary", ""),
+                    "followUpSteps": follow_ups,
+                    "follow_up_steps": follow_ups,
+                    "redFlags": red_flags,
+                    "red_flags": red_flags,
+                }
+            else:
+                follow_ups = getattr(pv, "follow_up_steps", [])
+                red_flags = getattr(pv, "red_flags", [])
+                ai_post_visit_dict = {
+                    "summary": getattr(pv, "summary", ""),
+                    "followUpSteps": follow_ups,
+                    "follow_up_steps": follow_ups,
+                    "redFlags": red_flags,
+                    "red_flags": red_flags,
+                }
+
+    return symptom_summary_dict, visit_notes_dict, ai_post_visit_dict
+
 
 
 async def search_doctors(query: str | None = None) -> list[DoctorSearchResult]:
@@ -99,11 +192,27 @@ async def get_doctor_slots(doctor_id: str, target_date: date | None = None) -> l
     if doctor is None or doctor.role != UserRole.DOCTOR:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
 
-    day = target_date or date.today()
-    slot_duration = getattr(doctor, "slot_duration_minutes", 30)
+    # Load DoctorProfile for accurate schedule data
+    profile = await DoctorProfile.find_one(DoctorProfile.user_id == doctor.id)
 
+    day = target_date or date.today()
+    slot_duration = (profile.slot_duration_minutes if profile else None) or 30
+
+    # Determine working start/end for this day-of-week from DoctorProfile
+    dow = day.weekday()  # 0=Mon … 6=Sun
     start_dt = datetime(day.year, day.month, day.day, 9, 0, 0)
     end_dt = datetime(day.year, day.month, day.day, 18, 0, 0)
+    if profile and profile.working_hours:
+        for wh in profile.working_hours:
+            wh_dow = getattr(wh, "day_of_week", None)
+            if wh_dow == dow:
+                st = getattr(wh, "start_time", None)
+                et = getattr(wh, "end_time", None)
+                if st:
+                    start_dt = datetime(day.year, day.month, day.day, st.hour, st.minute, 0)
+                if et:
+                    end_dt = datetime(day.year, day.month, day.day, et.hour, et.minute, 0)
+                break
 
     existing_appointments = await Appointment.find(
         Appointment.doctor_id == doctor.id,
@@ -145,6 +254,7 @@ async def get_doctor_slots(doctor_id: str, target_date: date | None = None) -> l
     return slots
 
 
+
 async def create_appointment_hold(patient_id: str, payload: BookAppointmentRequest) -> BookAppointmentResponse:
     from pymongo.errors import DuplicateKeyError
 
@@ -152,7 +262,10 @@ async def create_appointment_hold(patient_id: str, payload: BookAppointmentReque
     if doctor is None or doctor.role != UserRole.DOCTOR:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
 
-    slot_duration = getattr(doctor, "slot_duration_minutes", 30)
+    # Load slot duration from DoctorProfile, not User
+    doc_profile = await DoctorProfile.find_one(DoctorProfile.user_id == doctor.id)
+    slot_duration = (doc_profile.slot_duration_minutes if doc_profile else None) or 30
+
     req_slot_start = payload.slot_start.replace(tzinfo=None) if payload.slot_start else payload.slot_start
     slot_end = req_slot_start + timedelta(minutes=slot_duration)
     now = datetime.now()
@@ -239,10 +352,13 @@ async def confirm_appointment_hold(patient_id: str, appointment_id: str) -> Pati
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Appointment does not belong to this patient")
 
     if appointment.status == AppointmentStatus.HELD:
-        if appointment.hold_expires_at and appointment.hold_expires_at < datetime.now():
+        # Use .replace(tzinfo=None) to compare tz-aware MongoDB datetime with naive datetime.now()
+        expires = appointment.hold_expires_at.replace(tzinfo=None) if appointment.hold_expires_at else None
+        if expires and expires < datetime.now():
             appointment.status = AppointmentStatus.CANCELLED
             await appointment.save()
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Appointment hold expired")
+
 
     appointment.status = AppointmentStatus.BOOKED
     appointment.hold_expires_at = None
@@ -324,59 +440,7 @@ async def list_patient_appointments(patient_id: str) -> list[PatientAppointmentR
 
         form = await SymptomForm.find_one(SymptomForm.appointment_id == appointment.id)
         notes = await VisitNotes.find_one(VisitNotes.appointment_id == appointment.id)
-
-        symptom_summary_dict = None
-        if form and form.ai_pre_visit_summary:
-            if isinstance(form.ai_pre_visit_summary, dict):
-                symptom_summary_dict = form.ai_pre_visit_summary
-            else:
-                symptom_summary_dict = {
-                    "urgency": getattr(form.ai_pre_visit_summary, "urgency", "low"),
-                    "chief_complaint": getattr(form.ai_pre_visit_summary, "chief_complaint", getattr(form.ai_pre_visit_summary, "chiefComplaint", "")),
-                    "follow_up_questions": getattr(form.ai_pre_visit_summary, "follow_up_questions", []),
-                }
-
-        visit_notes_dict = None
-        ai_post_visit_dict = None
-        if notes:
-            prescriptions_list = []
-            for p in notes.prescription or []:
-                if isinstance(p, dict):
-                    m_name = p.get("medicationName") or p.get("medication_name") or ""
-                    dos = p.get("dosage") or ""
-                    freq = p.get("frequency") or ""
-                    dur = p.get("durationDays") or p.get("duration_days") or 7
-                    instr = p.get("instructions") or ""
-                else:
-                    m_name = getattr(p, "medication_name", None) or getattr(p, "medicationName", "") or ""
-                    dos = getattr(p, "dosage", "") or ""
-                    freq = getattr(p, "frequency", "") or ""
-                    dur = getattr(p, "duration_days", None) or getattr(p, "durationDays", 7) or 7
-                    instr = getattr(p, "instructions", "") or ""
-
-                if m_name:
-                    prescriptions_list.append({
-                        "medicationName": m_name,
-                        "dosage": dos,
-                        "frequency": freq,
-                        "durationDays": dur,
-                        "instructions": instr,
-                    })
-
-            visit_notes_dict = {
-                "diagnosis": getattr(notes, "diagnosis", "") or "",
-                "notes": notes.doctor_notes or "",
-                "prescriptions": prescriptions_list,
-            }
-            if notes.ai_post_visit_summary:
-                if isinstance(notes.ai_post_visit_summary, dict):
-                    ai_post_visit_dict = notes.ai_post_visit_summary
-                else:
-                    ai_post_visit_dict = {
-                        "summary": getattr(notes.ai_post_visit_summary, "summary", ""),
-                        "follow_up_steps": getattr(notes.ai_post_visit_summary, "follow_up_steps", []),
-                        "red_flags": getattr(notes.ai_post_visit_summary, "red_flags", []),
-                    }
+        symptom_summary_dict, visit_notes_dict, ai_post_visit_dict = _build_appointment_summaries(form, notes)
 
         responses.append(
             PatientAppointmentResponse(
@@ -391,7 +455,7 @@ async def list_patient_appointments(patient_id: str) -> list[PatientAppointmentR
                 ai_post_visit_summary=ai_post_visit_dict,
             )
         )
-    return sorted(responses, key=lambda item: item.slot_start)
+    return sorted(responses, key=lambda item: item.slot_start, reverse=True)
 
 
 async def create_booking_session(patient_id: str, symptoms_text: str) -> BookingSessionResponse:
@@ -498,59 +562,7 @@ async def get_patient_appointment_detail(patient_id: str, appointment_id: str) -
     doctor = await User.get(appointment.doctor_id)
     form = await SymptomForm.find_one(SymptomForm.appointment_id == appointment.id)
     notes = await VisitNotes.find_one(VisitNotes.appointment_id == appointment.id)
-
-    symptom_summary_dict = None
-    if form and form.ai_pre_visit_summary:
-        if isinstance(form.ai_pre_visit_summary, dict):
-            symptom_summary_dict = form.ai_pre_visit_summary
-        else:
-            symptom_summary_dict = {
-                "urgency": getattr(form.ai_pre_visit_summary, "urgency", "low"),
-                "chief_complaint": getattr(form.ai_pre_visit_summary, "chief_complaint", getattr(form.ai_pre_visit_summary, "chiefComplaint", "")),
-                "follow_up_questions": getattr(form.ai_pre_visit_summary, "follow_up_questions", []),
-            }
-
-    visit_notes_dict = None
-    ai_post_visit_dict = None
-    if notes:
-        prescriptions_list = []
-        for p in notes.prescription or []:
-            if isinstance(p, dict):
-                m_name = p.get("medicationName") or p.get("medication_name") or ""
-                dos = p.get("dosage") or ""
-                freq = p.get("frequency") or ""
-                dur = p.get("durationDays") or p.get("duration_days") or 7
-                instr = p.get("instructions") or ""
-            else:
-                m_name = getattr(p, "medication_name", None) or getattr(p, "medicationName", "") or ""
-                dos = getattr(p, "dosage", "") or ""
-                freq = getattr(p, "frequency", "") or ""
-                dur = getattr(p, "duration_days", None) or getattr(p, "durationDays", 7) or 7
-                instr = getattr(p, "instructions", "") or ""
-
-            if m_name:
-                prescriptions_list.append({
-                    "medicationName": m_name,
-                    "dosage": dos,
-                    "frequency": freq,
-                    "durationDays": dur,
-                    "instructions": instr,
-                })
-
-        visit_notes_dict = {
-            "diagnosis": getattr(notes, "diagnosis", "") or "",
-            "notes": notes.doctor_notes or "",
-            "prescriptions": prescriptions_list,
-        }
-        if notes.ai_post_visit_summary:
-            if isinstance(notes.ai_post_visit_summary, dict):
-                ai_post_visit_dict = notes.ai_post_visit_summary
-            else:
-                ai_post_visit_dict = {
-                    "summary": getattr(notes.ai_post_visit_summary, "summary", ""),
-                    "follow_up_steps": getattr(notes.ai_post_visit_summary, "follow_up_steps", []),
-                    "red_flags": getattr(notes.ai_post_visit_summary, "red_flags", []),
-                }
+    symptom_summary_dict, visit_notes_dict, ai_post_visit_dict = _build_appointment_summaries(form, notes)
 
     return PatientAppointmentResponse(
         appointment_id=str(appointment.id),
@@ -563,3 +575,4 @@ async def get_patient_appointment_detail(patient_id: str, appointment_id: str) -
         visit_notes=visit_notes_dict,
         ai_post_visit_summary=ai_post_visit_dict,
     )
+

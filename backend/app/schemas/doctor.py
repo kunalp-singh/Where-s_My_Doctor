@@ -38,8 +38,9 @@ class DoctorNotesResponse(BaseModel):
     status: str = "booked"
     symptoms_text: str | None = Field(default=None, alias="symptomsText")
     ai_pre_visit_summary: dict | None = Field(default=None, alias="aiPreVisitSummary")
-    doctor_notes: str = Field(alias="doctorNotes")
-    prescription: list[PrescriptionItem] = Field(default_factory=list)
+    doctor_notes: str = Field(default="", alias="doctorNotes")
+    diagnosis: str | None = None
+    prescriptions: list[PrescriptionItem] = Field(default_factory=list)
     ai_post_visit_summary: PostVisitSummary | None = Field(default=None, alias="aiPostVisitSummary")
 
 

@@ -5,17 +5,18 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..models.embedded import WorkingHour
 from ..models.enums import AppointmentStatus
 
 
 class DoctorSearchResult(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     id: str
     name: str
     email: str
     specialisation: str | None = None
-    working_hours: list[dict[str, str | int]] = Field(default_factory=list, alias="workingHours")
+    working_hours: list[WorkingHour] | list[dict[str, Any]] = Field(default_factory=list, alias="workingHours")
     slot_duration_minutes: int = Field(default=30, alias="slotDurationMinutes")
 
 

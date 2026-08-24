@@ -34,7 +34,10 @@ export default function DoctorDashboardPage() {
   const loadQueue = async () => {
     try {
       const data = await listDoctorAppointments();
-      setAppointments(data);
+      const sorted = [...data].sort(
+        (a, b) => new Date(b.slotStart).getTime() - new Date(a.slotStart).getTime()
+      );
+      setAppointments(sorted);
     } catch (err) {
       console.error("Error loading doctor appointments", err);
     } finally {
