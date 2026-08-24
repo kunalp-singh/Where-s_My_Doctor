@@ -40,15 +40,17 @@ function SlotSelectionContent() {
 
   const [doctorName, setDoctorName] = useState("");
   const [doctorSpec, setDoctorSpec] = useState("");
-  const [allSlots, setAllSlots] = useState<DoctorSlot[]>([]);
   const [dateOptions, setDateOptions] = useState<DateOption[]>([]);
   const [selectedDateStr, setSelectedDateStr] = useState<string>("");
+  const [daySlots, setDaySlots] = useState<DoctorSlot[]>([]);
   const [selectedShift, setSelectedShift] = useState<string>("morning");
 
-  const [loading, setLoading] = useState(true);
+  const [loadingDoctor, setLoadingDoctor] = useState(true);
+  const [loadingSlots, setLoadingSlots] = useState(false);
   const [holdingSlot, setHoldingSlot] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Initialize doctor details & 14 rolling date options
   useEffect(() => {
     if (authStatus === "unauthenticated") {
       router.push("/login");
@@ -58,13 +60,13 @@ function SlotSelectionContent() {
       } else if (!doctorId) {
         router.push(`/patient/book/${sessionId}/doctors`);
       } else {
-        loadDoctorAndSlots();
+        initPage();
       }
     }
   }, [authStatus, user, router, sessionId, doctorId]);
 
-  const loadDoctorAndSlots = async () => {
-    setLoading(true);
+  const initPage = async () => {
+    setLoadingDoctor(true);
     try {
       const allDocs = await searchDoctors();
       const doc = allDocs.find((d) => d.id === doctorId);
@@ -72,9 +74,6 @@ function SlotSelectionContent() {
         setDoctorName(doc.name);
         setDoctorSpec(doc.specialisation);
       }
-
-      const slotData = await getDoctorSlots(doctorId!);
-      setAllSlots(slotData);
 
       // Build 14 rolling date options
       const dates: DateOption[] = [];
@@ -84,7 +83,11 @@ function SlotSelectionContent() {
         const d = new Date(today);
         d.setDate(today.getDate() + i);
 
-        const iso = d.toISOString().slice(0, 10);
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const dd = String(d.getDate()).padStart(2, "0");
+        const iso = `${yyyy}-${mm}-${dd}`;
+
         dates.push({
           dateStr: iso,
           dayName: d.toLocaleDateString([], { weekday: "short" }),
@@ -99,24 +102,35 @@ function SlotSelectionContent() {
         setSelectedDateStr(dates[0].dateStr);
       }
     } catch (err: any) {
-      console.error("Error loading doctor slots", err);
-      setErrorMsg("Failed to load available time slots.");
+      console.error("Error loading doctor details", err);
+      setErrorMsg("Failed to load doctor details.");
     } finally {
-      setLoading(false);
+      setLoadingDoctor(false);
     }
   };
 
-  // Filter slots by selected date
-  const daySlots = allSlots.filter((s) => {
-    const d = new Date(s.slotStart);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    const localIso = `${yyyy}-${mm}-${dd}`;
-    return localIso === selectedDateStr || s.slotStart.slice(0, 10) === selectedDateStr;
-  });
+  // Fetch slots whenever selectedDateStr changes
+  useEffect(() => {
+    if (!doctorId || !selectedDateStr) return;
 
-  // Categorize slots into balanced Shift Blocks: Morning (09:00 - 12:00), Mid-Day (12:00 - 15:00), Evening (15:00 - 17:30)
+    const fetchSlotsForDate = async () => {
+      setLoadingSlots(true);
+      setErrorMsg(null);
+      try {
+        const slotData = await getDoctorSlots(doctorId, selectedDateStr);
+        setDaySlots(slotData);
+      } catch (err: any) {
+        console.error("Error loading slots for date", err);
+        setErrorMsg("Failed to load slots for selected date.");
+      } finally {
+        setLoadingSlots(false);
+      }
+    };
+
+    fetchSlotsForDate();
+  }, [doctorId, selectedDateStr]);
+
+  // Categorize slots into Morning, Mid-Day, Evening shifts
   const morningSlots = daySlots.filter((s) => {
     const h = new Date(s.slotStart).getHours();
     return h >= 8 && h < 12;
@@ -136,28 +150,28 @@ function SlotSelectionContent() {
     {
       id: "morning",
       label: "Morning Shift",
-      timeRange: "09:00 AM – 11:30 AM",
+      timeRange: "09:00 AM – 12:00 PM",
       icon: "🌅",
       slots: morningSlots,
     },
     {
       id: "midday",
       label: "Mid-Day Shift",
-      timeRange: "11:30 AM – 02:30 PM",
+      timeRange: "12:00 PM – 03:00 PM",
       icon: "☀️",
       slots: middaySlots,
     },
     {
       id: "evening",
       label: "Afternoon / Evening Shift",
-      timeRange: "03:00 PM – 05:30 PM",
+      timeRange: "03:00 PM – 06:00 PM",
       icon: "🌆",
       slots: eveningSlots,
     },
   ];
 
   const handleSelectSlot = async (slot: DoctorSlot) => {
-    if (!doctorId) return;
+    if (!doctorId || !slot.available) return;
     setHoldingSlot(slot.slotStart);
     setErrorMsg(null);
 
@@ -178,13 +192,13 @@ function SlotSelectionContent() {
     { label: "4. Confirm", active: false },
   ];
 
-  if (authStatus === "loading" || loading) {
+  if (authStatus === "loading" || loadingDoctor) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f1f6f2]">
         <div className="flex flex-col items-center gap-3">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#d7e2db] border-t-[#3e6b63]" />
           <p className="text-xs font-semibold uppercase tracking-wider text-[#587066]">
-            Fetching Available Time Slots...
+            Fetching Specialist Details...
           </p>
         </div>
       </div>
@@ -208,7 +222,7 @@ function SlotSelectionContent() {
         </header>
 
         {errorMsg && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-xs font-medium text-red-800">
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-xs font-medium text-red-800 animate-in fade-in">
             {errorMsg}
           </div>
         )}
@@ -228,9 +242,17 @@ function SlotSelectionContent() {
           <CardBody className="px-0 pt-6 pb-0 space-y-6">
             {/* BookMyShow Style Date Selection Slider */}
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-[#42564f] mb-3">
-                Select Date
-              </label>
+              <div className="flex items-center justify-between mb-3">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#42564f]">
+                  Select Date (Next 14 Days)
+                </label>
+                {loadingSlots && (
+                  <span className="text-xs text-[#3e6b63] font-semibold animate-pulse">
+                    Updating slots...
+                  </span>
+                )}
+              </div>
+
               <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
                 {dateOptions.map((opt) => {
                   const isSelected = selectedDateStr === opt.dateStr;
@@ -266,7 +288,8 @@ function SlotSelectionContent() {
 
               <div className="grid gap-4 md:grid-cols-3">
                 {shifts.map((shift) => {
-                  const hasSlots = shift.slots.length > 0;
+                  const availableSlots = shift.slots.filter((s) => s.available);
+                  const hasSlots = availableSlots.length > 0;
                   const isShiftSelected = selectedShift === shift.id;
 
                   return (
@@ -282,21 +305,25 @@ function SlotSelectionContent() {
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-xl">{shift.icon}</span>
                         <Badge variant={hasSlots ? "calm" : "neutral"}>
-                          {hasSlots ? `${shift.slots.length} Slots` : "Full"}
+                          {hasSlots ? `${availableSlots.length} Available` : "Full"}
                         </Badge>
                       </div>
 
                       <h3 className="font-bold text-[#21322a] text-sm">{shift.label}</h3>
                       <p className="text-xs font-medium text-[#587066] mt-0.5">{shift.timeRange}</p>
 
-                      {hasSlots && (
-                        <div className="mt-4 pt-3 border-t border-[#d7e2db]/70 space-y-2">
-                          <span className="text-[10px] font-bold uppercase text-[#3e6b63] block">
-                            Pick Time Slot:
-                          </span>
+                      <div className="mt-4 pt-3 border-t border-[#d7e2db]/70 space-y-2">
+                        <span className="text-[10px] font-bold uppercase text-[#3e6b63] block">
+                          Pick Time Slot:
+                        </span>
+
+                        {shift.slots.length === 0 ? (
+                          <span className="text-xs text-[#76857c] italic">No slots scheduled</span>
+                        ) : (
                           <div className="flex flex-wrap gap-1.5">
                             {shift.slots.map((slot, i) => {
                               const isHolding = holdingSlot === slot.slotStart;
+                              const isAvail = slot.available;
                               const timeStr = new Date(slot.slotStart).toLocaleTimeString([], {
                                 hour: "2-digit",
                                 minute: "2-digit",
@@ -305,15 +332,17 @@ function SlotSelectionContent() {
                                 <button
                                   key={i}
                                   type="button"
-                                  disabled={isHolding}
+                                  disabled={!isAvail || isHolding}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleSelectSlot(slot);
                                   }}
                                   className={`rounded-xl border px-2.5 py-1.5 text-xs font-bold transition-all duration-150 ${
                                     isHolding
-                                      ? "border-[#3e6b63] bg-[#3e6b63] text-white scale-105"
-                                      : "border-[#d7e2db] bg-[#f9f7f1] text-[#21322a] hover:border-[#3e6b63] hover:bg-[#3e6b63] hover:text-white"
+                                      ? "border-[#3e6b63] bg-[#3e6b63] text-white scale-105 animate-pulse"
+                                      : !isAvail
+                                      ? "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed line-through opacity-60"
+                                      : "border-[#d7e2db] bg-[#f9f7f1] text-[#21322a] hover:border-[#3e6b63] hover:bg-[#3e6b63] hover:text-white shadow-sm"
                                   }`}
                                 >
                                   {timeStr}
@@ -321,8 +350,8 @@ function SlotSelectionContent() {
                               );
                             })}
                           </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                   );
                 })}

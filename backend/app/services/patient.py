@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 from beanie import PydanticObjectId
+from beanie.operators import In
 from fastapi import HTTPException, status
 
 from ..models.appointment import Appointment
@@ -92,7 +93,7 @@ async def get_doctor_slots(doctor_id: str, target_date: date | None = None) -> l
 
     existing_appointments = await Appointment.find(
         Appointment.doctor_id == doctor.id,
-        Appointment.status.in_([AppointmentStatus.HELD, AppointmentStatus.CONFIRMED]),
+        In("status", [AppointmentStatus.HELD, AppointmentStatus.BOOKED]),
     ).to_list()
 
     busy_ranges: list[tuple[datetime, datetime]] = []
@@ -135,7 +136,7 @@ async def create_appointment_hold(patient_id: str, payload: BookAppointmentReque
 
     conflicting = await Appointment.find_one(
         Appointment.doctor_id == doctor.id,
-        Appointment.status.in_([AppointmentStatus.HELD, AppointmentStatus.CONFIRMED]),
+        In("status", [AppointmentStatus.HELD, AppointmentStatus.BOOKED]),
         Appointment.slot_start < slot_end,
         Appointment.slot_end > payload.slot_start,
     )
@@ -180,7 +181,7 @@ async def confirm_appointment_hold(patient_id: str, appointment_id: str) -> Pati
             await appointment.save()
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Appointment hold expired")
 
-    appointment.status = AppointmentStatus.CONFIRMED
+    appointment.status = AppointmentStatus.BOOKED
     appointment.hold_expires_at = None
     await appointment.save()
 
