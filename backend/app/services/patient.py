@@ -375,11 +375,20 @@ async def confirm_appointment_hold(patient_id: str, appointment_id: str) -> Pati
     if patient is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
 
-    # Sync only the patient's Google Calendar. Booking remains confirmed if this fails.
+    # Sync Google Calendar for BOTH patient and doctor
     try:
         from .google_calendar import sync_google_calendar_event
         from ..models.calendar import GoogleCalendarCredential
 
+        cal_description = (
+            "CareConnect appointment\n\n"
+            f"Patient: {patient.name}\n"
+            f"Doctor: Dr. {doctor.name}\n"
+            f"Doctor email: {doctor.email}\n"
+            f"Time zone: {appointment.time_zone}"
+        )
+
+        # Patient calendar
         cred_p = await GoogleCalendarCredential.find_one(GoogleCalendarCredential.user_id == patient.id)
         if cred_p:
             await sync_google_calendar_event(
@@ -387,23 +396,31 @@ async def confirm_appointment_hold(patient_id: str, appointment_id: str) -> Pati
                 appointment,
                 owner="patient",
                 title=f"Appointment with Dr. {doctor.name}",
-                description=(
-                    "CareConnect appointment\n\n"
-                    f"Patient: {patient.name}\n"
-                    f"Doctor: Dr. {doctor.name}\n"
-                    f"Doctor email: {doctor.email}\n"
-                    f"Time zone: {appointment.time_zone}"
-                ),
+                description=cal_description,
                 attendee_email=str(doctor.email),
                 time_zone=appointment.time_zone,
             )
+
+        # Doctor calendar
+        cred_d = await GoogleCalendarCredential.find_one(GoogleCalendarCredential.user_id == doctor.id)
+        if cred_d:
+            await sync_google_calendar_event(
+                str(doctor.id),
+                appointment,
+                owner="doctor",
+                title=f"Consultation: {patient.name}",
+                description=cal_description,
+                attendee_email=str(patient.email),
+                time_zone=appointment.time_zone,
+            )
     except Exception as g_err:
-        import logging
-        logging.getLogger("appointment_care").error("Google Calendar sync failed: %s", g_err)
+        logger.error("Google Calendar sync failed: %s", g_err)
 
     start_text = appointment.slot_start.isoformat()
     end_text = appointment.slot_end.isoformat()
-    text_body = (
+
+    # Email to PATIENT
+    patient_text = (
         f"Hello {patient.name},\n\n"
         f"Your appointment with Dr. {doctor.name} is confirmed.\n\n"
         f"Date and time: {start_text} to {end_text}\n"
@@ -411,7 +428,7 @@ async def confirm_appointment_hold(patient_id: str, appointment_id: str) -> Pati
         f"Doctor email: {doctor.email}\n\n"
         "Please arrive 10 minutes early and complete any requested symptom intake before your visit."
     )
-    html_body = (
+    patient_html = (
         f"<p>Hello {patient.name},</p>"
         f"<p>Your appointment with <strong>Dr. {doctor.name}</strong> is confirmed.</p>"
         "<ul>"
@@ -425,20 +442,34 @@ async def confirm_appointment_hold(patient_id: str, appointment_id: str) -> Pati
         str(appointment.id),
         NotificationType.BOOKING_CONFIRMATION,
         subject="Appointment confirmed",
-        body=text_body,
-        html_body=html_body,
+        body=patient_text,
+        html_body=patient_html,
     )
 
-    # Send confirmation email via Resend
+    # Email to DOCTOR
+    doctor_text = (
+        f"Hello Dr. {doctor.name},\n\n"
+        f"A new appointment has been booked by {patient.name}.\n\n"
+        f"Date and time: {start_text} to {end_text}\n"
+        f"Time zone: {appointment.time_zone}\n"
+        f"Patient email: {patient.email}\n\n"
+        "Please review the patient's symptom intake before the visit."
+    )
+    doctor_html = (
+        f"<p>Hello Dr. {doctor.name},</p>"
+        f"<p>A new appointment has been booked by <strong>{patient.name}</strong>.</p>"
+        "<ul>"
+        f"<li><strong>Date and time:</strong> {start_text} to {end_text}</li>"
+        f"<li><strong>Time zone:</strong> {appointment.time_zone}</li>"
+        f"<li><strong>Patient email:</strong> {patient.email}</li>"
+        "</ul>"
+        "<p>Please review the patient's symptom intake before the visit.</p>"
+    )
     try:
-        from .email_service import send_appointment_confirmation
-        await send_appointment_confirmation(
-            email=patient.email,
-            subject="Your Appointment is Confirmed",
-            html_body=html_body,
-        )
+        from .email import EmailMessage, send_email
+        await send_email(EmailMessage(to=str(doctor.email), subject="New Appointment Booked", body=doctor_text, html_body=doctor_html))
     except Exception as email_err:
-        logger.error("Resend email confirmation failed: %s", email_err)
+        logger.error("Doctor booking confirmation email failed: %s", email_err)
 
     return PatientAppointmentResponse(
         appointment_id=str(appointment.id),
@@ -483,8 +514,57 @@ async def cancel_patient_appointment(patient_id: str, appointment_id: str) -> di
         if cred_d:
             await remove_google_calendar_event(str(appointment.doctor_id), appointment, owner="doctor")
     except Exception as g_err:
-        import logging
-        logging.getLogger("appointment_care").error("Google Calendar event removal failed: %s", g_err)
+        logger.error("Google Calendar event removal failed: %s", g_err)
+
+    # Send cancellation emails to both patient and doctor
+    try:
+        patient = await User.get(appointment.patient_id)
+        doctor = await User.get(appointment.doctor_id)
+        if patient and doctor:
+            start_text = appointment.slot_start.isoformat()
+            end_text = appointment.slot_end.isoformat()
+
+            # Patient cancellation email
+            patient_cancel_text = (
+                f"Hello {patient.name},\n\n"
+                f"Your appointment with Dr. {doctor.name} scheduled for "
+                f"{start_text} to {end_text} has been cancelled.\n\n"
+                "If this was unintentional, please rebook through the portal."
+            )
+            patient_cancel_html = (
+                f"<p>Hello {patient.name},</p>"
+                f"<p>Your appointment with <strong>Dr. {doctor.name}</strong> scheduled for "
+                f"{start_text} to {end_text} has been <strong>cancelled</strong>.</p>"
+                "<p>If this was unintentional, please rebook through the portal.</p>"
+            )
+            await dispatch_appointment_notification(
+                str(appointment.id),
+                NotificationType.CANCELLATION,
+                subject="Appointment Cancelled",
+                body=patient_cancel_text,
+                html_body=patient_cancel_html,
+            )
+
+            # Doctor cancellation email
+            doctor_cancel_text = (
+                f"Hello Dr. {doctor.name},\n\n"
+                f"The appointment with {patient.name} scheduled for "
+                f"{start_text} to {end_text} has been cancelled by the patient.\n"
+            )
+            doctor_cancel_html = (
+                f"<p>Hello Dr. {doctor.name},</p>"
+                f"<p>The appointment with <strong>{patient.name}</strong> scheduled for "
+                f"{start_text} to {end_text} has been <strong>cancelled</strong> by the patient.</p>"
+            )
+            from .email import EmailMessage, send_email
+            await send_email(EmailMessage(
+                to=str(doctor.email),
+                subject="Appointment Cancelled",
+                body=doctor_cancel_text,
+                html_body=doctor_cancel_html,
+            ))
+    except Exception as email_err:
+        logger.error("Cancellation email notification failed: %s", email_err)
 
     return {"message": "Appointment cancelled successfully", "appointmentId": appointment_id}
 

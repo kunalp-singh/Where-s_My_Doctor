@@ -381,5 +381,109 @@ def trigger_post_visit_summary(
         logger.info("Enqueued post-visit summary Celery task for Notes %s", visit_notes_id_str)
     except Exception as exc:
         import asyncio
-        asyncio.create_task(run_post_visit_summary_background(visit_notes_id_str, diagnosis, notes, prescriptions_data))
         logger.info("Flipped to asyncio.create_task post-visit summary fallback: %s", exc)
+
+
+async def send_appointment_reminders() -> int:
+    import logging
+    logger = logging.getLogger("appointment_care")
+    now = datetime.now(UTC)
+    reminder_window_start = now
+    reminder_window_end = now + timedelta(hours=24)
+
+    # Find booked appointments starting in the next 24 hours
+    appointments = await Appointment.find(
+        Appointment.status == AppointmentStatus.BOOKED,
+        Appointment.slot_start >= reminder_window_start,
+        Appointment.slot_start <= reminder_window_end,
+    ).to_list()
+
+    processed = 0
+    for appt in appointments:
+        # Check if we already sent a reminder for this appointment
+        existing_reminder = await NotificationLog.find_one(
+            NotificationLog.appointment_id == appt.id,
+            NotificationLog.type == NotificationType.REMINDER,
+        )
+        if existing_reminder is not None:
+            continue
+
+        patient = await User.get(appt.patient_id)
+        doctor = await User.get(appt.doctor_id)
+        if not patient or not doctor:
+            continue
+
+        # Create the NotificationLog first to prevent duplicate sends
+        log = NotificationLog(
+            appointment_id=appt.id,
+            type=NotificationType.REMINDER,
+            channel=NotificationChannel.EMAIL,
+            status=NotificationStatus.PENDING,
+        )
+        await log.save()
+
+        start_text = appt.slot_start.isoformat()
+        end_text = appt.slot_end.isoformat()
+
+        # Send email to patient
+        patient_subject = "Reminder: Upcoming Appointment"
+        patient_body = (
+            f"Hello {patient.name},\n\n"
+            f"This is a reminder for your upcoming appointment with Dr. {doctor.name}.\n\n"
+            f"Date and time: {start_text} to {end_text}\n"
+            f"Time zone: {appt.time_zone}\n"
+        )
+        patient_html = (
+            f"<p>Hello {patient.name},</p>"
+            f"<p>This is a reminder for your upcoming appointment with <strong>Dr. {doctor.name}</strong>.</p>"
+            "<ul>"
+            f"<li><strong>Date and time:</strong> {start_text} to {end_text}</li>"
+            f"<li><strong>Time zone:</strong> {appt.time_zone}</li>"
+            "</ul>"
+        )
+
+        # Send email to doctor
+        doctor_subject = "Reminder: Upcoming Consultation"
+        doctor_body = (
+            f"Hello Dr. {doctor.name},\n\n"
+            f"This is a reminder for your upcoming consultation with {patient.name}.\n\n"
+            f"Date and time: {start_text} to {end_text}\n"
+            f"Time zone: {appt.time_zone}\n"
+        )
+        doctor_html = (
+            f"<p>Hello Dr. {doctor.name},</p>"
+            f"<p>This is a reminder for your upcoming consultation with <strong>{patient.name}</strong>.</p>"
+            "<ul>"
+            f"<li><strong>Date and time:</strong> {start_text} to {end_text}</li>"
+            f"<li><strong>Time zone:</strong> {appt.time_zone}</li>"
+            "</ul>"
+        )
+
+        sent_patient = False
+        sent_doctor = False
+        try:
+            sent_patient = await send_email(EmailMessage(
+                to=str(patient.email),
+                subject=patient_subject,
+                body=patient_body,
+                html_body=patient_html,
+            ))
+            sent_doctor = await send_email(EmailMessage(
+                to=str(doctor.email),
+                subject=doctor_subject,
+                body=doctor_body,
+                html_body=doctor_html,
+            ))
+        except Exception as err:
+            logger.error("Failed to send appointment reminder email: %s", err)
+
+        log.attempts += 1
+        if sent_patient and sent_doctor:
+            log.status = NotificationStatus.SENT
+        else:
+            log.status = NotificationStatus.FAILED
+            log.last_error = "Failed to send email to patient or doctor"
+        await log.save()
+        processed += 1
+
+    return processed

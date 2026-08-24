@@ -27,6 +27,7 @@ from .services.jobs import (
     run_pre_visit_summary_background,
     run_booking_session_summary_background,
     run_post_visit_summary_background,
+    send_appointment_reminders,
 )
 
 settings = get_settings()
@@ -51,6 +52,10 @@ celery_app.conf.update(
         "notification-retry-check": {
             "task": "app.celery_app.retry_failed_notifications_task",
             "schedule": crontab(minute="*/5"),
+        },
+        "appointment-reminder-check": {
+            "task": "app.celery_app.send_appointment_reminders_task",
+            "schedule": crontab(minute="0", hour="*"),
         },
     },
 )
@@ -128,3 +133,13 @@ def generate_post_visit_summary_task(
             prescriptions_data,
         )
     asyncio.run(run())
+
+
+async def _run_send_appointment_reminders():
+    await _init_db()
+    return await send_appointment_reminders()
+
+
+@celery_app.task(name="app.celery_app.send_appointment_reminders_task")
+def send_appointment_reminders_task() -> int:
+    return asyncio.run(_run_send_appointment_reminders())

@@ -157,6 +157,56 @@ async def mark_leave_date(doctor_id: str, request: LeaveDayRequest) -> LeaveDayS
                     await remove_google_calendar_event(str(booking.doctor_id), booking, owner="doctor")
             except Exception as g_err:
                 logger.error("Google Calendar event deletion failed for leave day: %s", g_err)
+
+            # Send cancellation emails to both patient and doctor
+            try:
+                patient = await User.get(booking.patient_id)
+                if patient:
+                    start_text = booking.slot_start.isoformat()
+                    end_text = booking.slot_end.isoformat()
+
+                    # Patient cancellation email
+                    patient_cancel_text = (
+                        f"Hello {patient.name},\n\n"
+                        f"Your appointment with Dr. {doctor.name} scheduled for "
+                        f"{start_text} to {end_text} has been cancelled because the doctor is on leave.\n\n"
+                        "Please rebook through the portal."
+                    )
+                    patient_cancel_html = (
+                        f"<p>Hello {patient.name},</p>"
+                        f"<p>Your appointment with <strong>Dr. {doctor.name}</strong> scheduled for "
+                        f"{start_text} to {end_text} has been <strong>cancelled</strong> because the doctor is on leave.</p>"
+                        "<p>Please rebook through the portal.</p>"
+                    )
+                    
+                    from .email import EmailMessage, send_email
+                    await send_email(EmailMessage(
+                        to=str(patient.email),
+                        subject="Appointment Cancelled",
+                        body=patient_cancel_text,
+                        html_body=patient_cancel_html,
+                    ))
+
+                    # Doctor cancellation email
+                    doctor_cancel_text = (
+                        f"Hello Dr. {doctor.name},\n\n"
+                        f"Your appointment with {patient.name} scheduled for "
+                        f"{start_text} to {end_text} has been cancelled due to your leave configuration.\n"
+                    )
+                    doctor_cancel_html = (
+                        f"<p>Hello Dr. {doctor.name},</p>"
+                        f"<p>Your appointment with <strong>{patient.name}</strong> scheduled for "
+                        f"{start_text} to {end_text} has been <strong>cancelled</strong> due to your leave configuration.</p>"
+                    )
+                    await send_email(EmailMessage(
+                        to=str(doctor.email),
+                        subject="Appointment Cancelled (Leave Day)",
+                        body=doctor_cancel_text,
+                        html_body=doctor_cancel_html,
+                    ))
+            except Exception as email_err:
+                logger.error("Cancellation email notification failed for leave day: %s", email_err)
+
             await dispatch_appointment_notification(
                 str(booking.id),
                 NotificationType.CANCELLATION,
