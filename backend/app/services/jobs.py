@@ -17,6 +17,13 @@ def _parse_frequency_to_delta(frequency: str) -> timedelta:
     if not text:
         return timedelta(days=1)
 
+    if "twice" in text:
+        return timedelta(hours=12)
+    if "three times" in text:
+        return timedelta(hours=8)
+    if "four times" in text:
+        return timedelta(hours=6)
+
     match = re.search(r"(\d+)\s*(hour|hours|day|days|week|weeks|minute|minutes)", text)
     if match:
         value = int(match.group(1))
@@ -41,6 +48,44 @@ def _parse_frequency_to_delta(frequency: str) -> timedelta:
     if "hourly" in text or "hour" in text:
         return timedelta(hours=1)
     return timedelta(days=1)
+
+
+async def schedule_medication_reminders(
+    appointment_id: PydanticObjectId,
+    prescriptions: list[object],
+) -> None:
+    """Pre-creates MedicationReminder records for each prescription based on frequency and duration."""
+    from ..models.embedded import PrescriptionItem
+    
+    now = datetime.now(UTC)
+    for p in prescriptions or []:
+        freq = getattr(p, "frequency", "") or ""
+        med_name = getattr(p, "medication_name", "") or ""
+        duration = getattr(p, "duration_days", 7) or 7
+
+        delta = _parse_frequency_to_delta(freq)
+        delta_seconds = delta.total_seconds()
+        if delta_seconds <= 0:
+            delta_seconds = 24 * 3600
+
+        total_seconds = duration * 24 * 3600
+        current_offset = delta_seconds
+        
+        max_reminders = 100
+        count = 0
+
+        while current_offset <= total_seconds and count < max_reminders:
+            reminder_time = now + timedelta(seconds=current_offset)
+            reminder = MedicationReminder(
+                appointment_id=appointment_id,
+                medication_name=med_name,
+                frequency=freq,
+                next_send_at=reminder_time,
+                status=ReminderStatus.PENDING,
+            )
+            await reminder.insert()
+            current_offset += delta_seconds
+            count += 1
 
 
 async def process_medication_reminders() -> int:

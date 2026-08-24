@@ -117,6 +117,23 @@ async def mark_leave_date(doctor_id: str, request: LeaveDayRequest) -> LeaveDayS
             booking.status = AppointmentStatus.CANCELLED
             await booking.save()
             affected.append(booking)
+
+            # Remove Google Calendar events
+            try:
+                from .google_calendar import remove_google_calendar_event
+                from ..models.calendar import GoogleCalendarCredential
+
+                # For patient:
+                cred_p = await GoogleCalendarCredential.find_one(GoogleCalendarCredential.user_id == booking.patient_id)
+                if cred_p:
+                    await remove_google_calendar_event(str(booking.patient_id), booking, owner="patient")
+
+                # For doctor:
+                cred_d = await GoogleCalendarCredential.find_one(GoogleCalendarCredential.user_id == booking.doctor_id)
+                if cred_d:
+                    await remove_google_calendar_event(str(booking.doctor_id), booking, owner="doctor")
+            except Exception as g_err:
+                logger.error("Google Calendar event deletion failed for leave day: %s", g_err)
             await dispatch_appointment_notification(
                 str(booking.id),
                 NotificationType.CANCELLATION,

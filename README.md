@@ -8,7 +8,7 @@ CareConnect is a healthcare appointment and follow-up management platform for pa
 - Authentication: JWT access/refresh tokens with role enforcement
 - Frontend: Next.js/Tailwind UI pages for admin, patient, and doctor portals
 - Background jobs: Celery + Redis for medication reminders and retry processing
-- Integrations: Google Calendar OAuth + SendGrid email delivery
+- Integrations: Google Calendar OAuth + Gmail SMTP email delivery
 
 ## Core features
 
@@ -81,9 +81,8 @@ The project expects the following values in `backend/.env`:
 - `GOOGLE_CLIENT_SECRET`: Google OAuth client secret
 - `GOOGLE_REDIRECT_URI`: OAuth callback URL
 - `GOOGLE_TOKEN_ENCRYPTION_SECRET`: encryption key for stored Google tokens
-- `SENDGRID_API_KEY`: API key for email delivery
-- `SENDGRID_FROM_EMAIL`: sender email address
-- `SENDGRID_FROM_NAME`: sender display name
+- `GMAIL_ADDRESS`: Your Gmail email address
+- `GMAIL_APP_PASSWORD`: 16-character Google App Password (generated via Google Account -> Security -> App Passwords)
 - `CELERY_BROKER_URL`: Redis broker URL
 - `CELERY_RESULT_BACKEND`: Redis result backend URL
 
@@ -99,7 +98,7 @@ The project expects the following values in `backend/.env`:
 
 - MongoDB should be hosted and reachable from the backend service.
 - Redis should be available for Celery task scheduling and worker execution.
-- SendGrid and Google OAuth credentials should be set in a production-safe secret manager or environment store.
+- Gmail SMTP and Google OAuth credentials should be set in a production-safe secret manager or environment store.
 - Notification logs and medication reminder rows are designed to support retries and auditability.
 
 ## Project structure

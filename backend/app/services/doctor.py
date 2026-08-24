@@ -169,6 +169,16 @@ async def submit_visit_notes(
     appointment.status = AppointmentStatus.COMPLETED
     await appointment.save()
 
+    # Clear old pending reminders and schedule new ones
+    from ..models.notification import MedicationReminder
+    from ..models.enums import ReminderStatus
+    from .jobs import schedule_medication_reminders
+    await MedicationReminder.find(
+        MedicationReminder.appointment_id == appointment.id,
+        MedicationReminder.status == ReminderStatus.PENDING,
+    ).delete()
+    await schedule_medication_reminders(appointment.id, prescriptions)
+
     # Dispatch email notification to patient alerting that Post-Visit Care Summary is ready
     try:
         await dispatch_appointment_notification(

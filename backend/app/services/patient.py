@@ -368,6 +368,38 @@ async def confirm_appointment_hold(patient_id: str, appointment_id: str) -> Pati
     if doctor is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
 
+    # Sync Google Calendar
+    try:
+        from .google_calendar import sync_google_calendar_event
+        from ..models.calendar import GoogleCalendarCredential
+        
+        patient = await User.get(appointment.patient_id)
+        if patient:
+            cred_p = await GoogleCalendarCredential.find_one(GoogleCalendarCredential.user_id == patient.id)
+            if cred_p:
+                await sync_google_calendar_event(
+                    str(patient.id),
+                    appointment,
+                    owner="patient",
+                    title=f"Appointment with Dr. {doctor.name}",
+                    description="Consultation on Appointment Care Portal",
+                    attendee_email=doctor.email,
+                )
+        
+            cred_d = await GoogleCalendarCredential.find_one(GoogleCalendarCredential.user_id == doctor.id)
+            if cred_d:
+                await sync_google_calendar_event(
+                    str(doctor.id),
+                    appointment,
+                    owner="doctor",
+                    title=f"Consultation: {patient.name}",
+                    description="Consultation on Appointment Care Portal",
+                    attendee_email=patient.email,
+                )
+    except Exception as g_err:
+        import logging
+        logging.getLogger("appointment_care").error("Google Calendar sync failed: %s", g_err)
+
     await dispatch_appointment_notification(
         str(appointment.id),
         NotificationType.BOOKING_CONFIRMATION,
@@ -398,6 +430,32 @@ async def cancel_patient_appointment(patient_id: str, appointment_id: str) -> di
 
     appointment.status = AppointmentStatus.CANCELLED
     await appointment.save()
+
+    # Cancel any pending medication reminders
+    from ..models.notification import MedicationReminder
+    from ..models.enums import ReminderStatus
+    await MedicationReminder.find(
+        MedicationReminder.appointment_id == appointment.id,
+        MedicationReminder.status == ReminderStatus.PENDING,
+    ).update({"$set": {"status": ReminderStatus.CANCELLED}})
+
+    # Remove Google Calendar events
+    try:
+        from .google_calendar import remove_google_calendar_event
+        from ..models.calendar import GoogleCalendarCredential
+
+        # For patient:
+        cred_p = await GoogleCalendarCredential.find_one(GoogleCalendarCredential.user_id == appointment.patient_id)
+        if cred_p:
+            await remove_google_calendar_event(patient_id, appointment, owner="patient")
+
+        # For doctor:
+        cred_d = await GoogleCalendarCredential.find_one(GoogleCalendarCredential.user_id == appointment.doctor_id)
+        if cred_d:
+            await remove_google_calendar_event(str(appointment.doctor_id), appointment, owner="doctor")
+    except Exception as g_err:
+        import logging
+        logging.getLogger("appointment_care").error("Google Calendar event removal failed: %s", g_err)
 
     return {"message": "Appointment cancelled successfully", "appointmentId": appointment_id}
 
