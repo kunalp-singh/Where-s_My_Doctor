@@ -20,7 +20,7 @@ SPECIALISATIONS_LIST = [
 ]
 
 
-def transcribe_audio_symptoms(audio_bytes: bytes, mime_type: str = "audio/webm") -> str:
+async def transcribe_audio_symptoms(audio_bytes: bytes, mime_type: str = "audio/webm") -> str:
     settings = get_settings()
     if not settings.gemini_api_key:
         logger.warning("GEMINI_API_KEY is not set for audio transcription")
@@ -37,10 +37,10 @@ def transcribe_audio_symptoms(audio_bytes: bytes, mime_type: str = "audio/webm")
         "Return ONLY the transcribed text without any conversational intro, quotation marks, or meta explanations."
     )
 
-    models_to_try = ["gemini-3.7-flash", "gemini-flash-latest", "gemini-2.5-flash"]
+    models_to_try = ["gemini-3.7-flash", "gemini-2.5-flash"]
     for model_name in models_to_try:
         try:
-            response = client.models.generate_content(
+            response = await client.aio.models.generate_content(
                 model=model_name,
                 contents=[
                     types.Part.from_bytes(
@@ -62,7 +62,7 @@ def transcribe_audio_symptoms(audio_bytes: bytes, mime_type: str = "audio/webm")
     return ""
 
 
-def build_pre_visit_summary(symptoms_text: str) -> dict[str, Any]:
+async def build_pre_visit_summary(symptoms_text: str) -> dict[str, Any]:
     cleaned = (symptoms_text or "").strip()
     if not cleaned:
         return {
@@ -95,11 +95,11 @@ Required JSON Keys:
 - "follow_up_questions": array of exactly 3 relevant medical questions
 - "recommended_specialisation": exactly one item chosen from the medical specialisation list that best fits the symptoms.
 """
-            models_to_try = ["gemini-3.7-flash", "gemini-flash-latest", "gemini-2.5-flash"]
+            models_to_try = ["gemini-3.7-flash", "gemini-2.5-flash"]
             data = None
             for model_name in models_to_try:
                 try:
-                    response = client.models.generate_content(
+                    response = await client.aio.models.generate_content(
                         model=model_name,
                         contents=prompt,
                         config=types.GenerateContentConfig(
@@ -188,12 +188,11 @@ Required JSON Keys:
     }
 
 
-def build_post_visit_summary(diagnosis: str, notes: str, prescriptions: list[Any]) -> dict[str, Any]:
-    """Generates a patient-friendly summary, medication schedule, and follow-up steps via Gemini AI."""
+async def build_post_visit_summary(diagnosis: str, notes: str, prescriptions: list[Any]) -> dict[str, Any]:
     settings = get_settings()
 
     prescription_text_items = []
-    for p in prescriptions:
+    for p in prescriptions or []:
         if isinstance(p, dict):
             m_name = p.get("medicationName") or p.get("medication_name", "")
             dos = p.get("dosage", "")
@@ -228,11 +227,11 @@ def build_post_visit_summary(diagnosis: str, notes: str, prescriptions: list[Any
                 '- "red_flags": Array of 2-3 warning symptoms where the patient should seek immediate medical care.'
             )
 
-            models_to_try = ["gemini-3.7-flash", "gemini-flash-latest", "gemini-2.5-flash"]
+            models_to_try = ["gemini-3.7-flash", "gemini-2.5-flash"]
             data = None
             for model_name in models_to_try:
                 try:
-                    response = client.models.generate_content(
+                    response = await client.aio.models.generate_content(
                         model=model_name,
                         contents=prompt,
                         config=types.GenerateContentConfig(response_mime_type="application/json"),

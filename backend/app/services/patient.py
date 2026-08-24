@@ -459,7 +459,7 @@ async def list_patient_appointments(patient_id: str) -> list[PatientAppointmentR
 
 
 async def create_booking_session(patient_id: str, symptoms_text: str) -> BookingSessionResponse:
-    ai_res = build_pre_visit_summary(symptoms_text)
+    ai_res = await build_pre_visit_summary(symptoms_text)
     session = BookingSession(
         patient_id=PydanticObjectId(patient_id),
         symptoms_text=symptoms_text,

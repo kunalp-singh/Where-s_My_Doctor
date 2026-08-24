@@ -50,7 +50,7 @@ async def transcribe_patient_audio(
     if "," in raw_b64:
         raw_b64 = raw_b64.split(",", 1)[1]
     audio_bytes = base64.b64decode(raw_b64)
-    transcript = transcribe_audio_symptoms(audio_bytes, payload.mime_type)
+    transcript = await transcribe_audio_symptoms(audio_bytes, payload.mime_type)
     return AudioTranscriptionResponse(transcript=transcript)
 
 

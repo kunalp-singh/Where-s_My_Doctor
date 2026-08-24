@@ -142,7 +142,7 @@ async def submit_visit_notes(
     from .notifications import dispatch_appointment_notification
     from ..models.enums import NotificationType
 
-    ai_dict = build_post_visit_summary(payload.diagnosis, payload.notes, prescriptions)
+    ai_dict = await build_post_visit_summary(payload.diagnosis, payload.notes, prescriptions)
     summary = PostVisitSummary(
         summary=ai_dict["summary"],
         follow_up_steps=ai_dict["follow_up_steps"],
