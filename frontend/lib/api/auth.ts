@@ -28,7 +28,7 @@ export async function registerUser(payload: {
   name: string;
   email: string;
   password: string;
-  role: "patient" | "doctor";
+  role: "patient" | "doctor" | "admin";
   specialisation?: string;
 }): Promise<TokenPair> {
   const data = await apiFetch<TokenPair>("/auth/register", {
@@ -51,4 +51,3 @@ export async function refreshTokens(refreshToken: string): Promise<TokenPair> {
   setMemoryTokens(data.accessToken, data.refreshToken);
   return data;
 }
-

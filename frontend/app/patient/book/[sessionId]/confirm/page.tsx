@@ -20,7 +20,7 @@ import { useAuth } from "../../../../../lib/AuthContext";
 export default function BookingConfirmPage() {
   const { user, authStatus } = useAuth();
   const router = useRouter();
-  const params = useParams();
+  const params = useParams()!;
   const sessionId = params.sessionId as string;
 
   const [session, setSession] = useState<BookingSession | null>(null);
@@ -215,4 +215,3 @@ export default function BookingConfirmPage() {
     </main>
   );
 }
-

@@ -119,11 +119,12 @@ export async function sessionHoldAppointment(
   doctorId: string,
   slotStart: string
 ): Promise<{ appointmentId: string; holdExpiresAt?: string }> {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   return apiFetch<{ appointmentId: string; holdExpiresAt?: string }>(
     `/patients/booking-sessions/${sessionId}/hold`,
     {
       method: "POST",
-      body: JSON.stringify({ doctorId, slotStart }),
+      body: JSON.stringify({ doctorId, slotStart, timeZone }),
     }
   );
 }
@@ -136,9 +137,10 @@ export async function sessionConfirmAppointment(sessionId: string): Promise<Pati
 }
 
 export async function holdAppointment(doctorId: string, slotStart: string, slotEnd?: string): Promise<{ appointmentId: string }> {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   return apiFetch<{ appointmentId: string }>("/patients/appointments/hold", {
     method: "POST",
-    body: JSON.stringify({ doctorId, slotStart }),
+    body: JSON.stringify({ doctorId, slotStart, timeZone }),
   });
 }
 

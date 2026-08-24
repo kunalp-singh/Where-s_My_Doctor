@@ -160,13 +160,20 @@ async def create_google_calendar_event(
     *,
     description: str | None = None,
     attendee_email: str | None = None,
+    time_zone: str | None = None,
 ) -> str:
     access_token = await _get_valid_access_token(user_id)
+    start_payload: dict[str, str] = {"dateTime": start.isoformat()}
+    end_payload: dict[str, str] = {"dateTime": end.isoformat()}
+    if time_zone:
+        start_payload["timeZone"] = time_zone
+        end_payload["timeZone"] = time_zone
+
     payload: dict[str, object] = {
         "summary": title,
         "description": description or "Appointment Care booking",
-        "start": {"dateTime": start.isoformat()},
-        "end": {"dateTime": end.isoformat()},
+        "start": start_payload,
+        "end": end_payload,
     }
     if attendee_email:
         payload["attendees"] = [{"email": attendee_email}]
@@ -192,13 +199,20 @@ async def update_google_calendar_event(
     *,
     description: str | None = None,
     attendee_email: str | None = None,
+    time_zone: str | None = None,
 ) -> str:
     access_token = await _get_valid_access_token(user_id)
+    start_payload: dict[str, str] = {"dateTime": start.isoformat()}
+    end_payload: dict[str, str] = {"dateTime": end.isoformat()}
+    if time_zone:
+        start_payload["timeZone"] = time_zone
+        end_payload["timeZone"] = time_zone
+
     payload: dict[str, object] = {
         "summary": title,
         "description": description or "Appointment Care booking",
-        "start": {"dateTime": start.isoformat()},
-        "end": {"dateTime": end.isoformat()},
+        "start": start_payload,
+        "end": end_payload,
     }
     if attendee_email:
         payload["attendees"] = [{"email": attendee_email}]
@@ -234,6 +248,7 @@ async def attach_google_calendar_event(
     title: str,
     description: str | None = None,
     attendee_email: str | None = None,
+    time_zone: str | None = None,
 ) -> str:
     event_id = await create_google_calendar_event(
         user_id,
@@ -242,6 +257,7 @@ async def attach_google_calendar_event(
         appointment.slot_end,
         description=description,
         attendee_email=attendee_email,
+        time_zone=time_zone or getattr(appointment, "time_zone", None),
     )
     if owner == "patient":
         appointment.google_calendar_event_id_patient = event_id
@@ -259,6 +275,7 @@ async def sync_google_calendar_event(
     title: str,
     description: str | None = None,
     attendee_email: str | None = None,
+    time_zone: str | None = None,
 ) -> str:
     event_id = (
         appointment.google_calendar_event_id_patient
@@ -274,6 +291,7 @@ async def sync_google_calendar_event(
             appointment.slot_end,
             description=description,
             attendee_email=attendee_email,
+            time_zone=time_zone or getattr(appointment, "time_zone", None),
         )
     return await attach_google_calendar_event(
         user_id,
@@ -282,6 +300,7 @@ async def sync_google_calendar_event(
         title=title,
         description=description,
         attendee_email=attendee_email,
+        time_zone=time_zone or getattr(appointment, "time_zone", None),
     )
 
 

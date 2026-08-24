@@ -32,8 +32,8 @@ interface ShiftBlock {
 function SlotSelectionContent() {
   const { user, authStatus } = useAuth();
   const router = useRouter();
-  const params = useParams();
-  const searchParams = useSearchParams();
+  const params = useParams()!;
+  const searchParams = useSearchParams()!;
 
   const sessionId = params.sessionId as string;
   const doctorId = searchParams.get("doctorId");

@@ -19,6 +19,7 @@ class Appointment(Document):
     doctor_id: Annotated[PydanticObjectId, Field(alias="doctorId")]
     slot_start: datetime = Field(alias="slotStart")
     slot_end: datetime = Field(alias="slotEnd")
+    time_zone: str = Field(default="UTC", alias="timeZone")
     status: AppointmentStatus
     hold_expires_at: datetime | None = Field(default=None, alias="holdExpiresAt")
     google_calendar_event_id_patient: str | None = Field(default=None, alias="googleCalendarEventIdPatient")

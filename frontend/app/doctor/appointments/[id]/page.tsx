@@ -19,7 +19,7 @@ interface PrescriptionRow {
 export default function DoctorConsultationPage() {
   const { user, authStatus } = useAuth();
   const router = useRouter();
-  const params = useParams();
+  const params = useParams()!;
   const appointmentId = params.id as string;
 
   const [visitDetail, setVisitDetail] = useState<DoctorNotesResponse | null>(null);

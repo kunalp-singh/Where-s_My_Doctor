@@ -16,6 +16,7 @@ async def dispatch_appointment_notification(
     *,
     subject: str,
     body: str,
+    html_body: str | None = None,
 ) -> NotificationLog | None:
     appointment = await Appointment.get(PydanticObjectId(appointment_id))
     if appointment is None:
@@ -37,7 +38,7 @@ async def dispatch_appointment_notification(
     if not settings.resend_api_key:
         return log
 
-    sent = await send_email(EmailMessage(to=str(patient.email), subject=subject, body=body))
+    sent = await send_email(EmailMessage(to=str(patient.email), subject=subject, body=body, html_body=html_body))
     log.attempts += 1
     if sent:
         log.status = NotificationStatus.SENT

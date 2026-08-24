@@ -13,7 +13,7 @@ import { useAuth } from "../../../../lib/AuthContext";
 export default function PatientAppointmentDetailPage() {
   const { user, authStatus } = useAuth();
   const router = useRouter();
-  const params = useParams();
+  const params = useParams()!;
   const appointmentId = params.id as string;
 
   const [appointment, setAppointment] = useState<PatientAppointmentResponse | null>(null);

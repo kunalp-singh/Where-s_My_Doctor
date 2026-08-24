@@ -6,24 +6,27 @@ import { cn } from "../../lib/cn";
 import { Button } from "./Button";
 
 type ModalProps = {
-  open: boolean;
+  open?: boolean;
+  isOpen?: boolean;
   title: string;
   children: ReactNode;
   onClose: () => void;
   className?: string;
 };
 
-export function Modal({ open, title, children, onClose, className }: ModalProps) {
+export function Modal({ open, isOpen, title, children, onClose, className }: ModalProps) {
+  const shouldShow = open ?? isOpen ?? false;
+
   useEffect(() => {
-    if (!open) return;
+    if (!shouldShow) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose]);
+  }, [shouldShow, onClose]);
 
-  if (!open) return null;
+  if (!shouldShow) return null;
 
   return (
     <div

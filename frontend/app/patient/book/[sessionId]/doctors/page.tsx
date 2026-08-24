@@ -31,7 +31,7 @@ const specialisations = [
 export default function DoctorSelectionPage() {
   const { user, authStatus } = useAuth();
   const router = useRouter();
-  const params = useParams();
+  const params = useParams()!;
   const sessionId = params.sessionId as string;
 
   const [session, setSession] = useState<BookingSession | null>(null);
@@ -301,4 +301,3 @@ export default function DoctorSelectionPage() {
     </main>
   );
 }
-

@@ -6,7 +6,7 @@ import { useAuth } from "../../../lib/AuthContext";
 
 function AuthCallbackInner() {
   const router = useRouter();
-  const params = useSearchParams();
+  const params = useSearchParams()!;
   const { loginWithTokens } = useAuth();
   const [error, setError] = useState<string | null>(null);
 

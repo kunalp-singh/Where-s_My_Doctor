@@ -34,6 +34,7 @@ class BookAppointmentRequest(BaseModel):
 
     doctor_id: str = Field(alias="doctorId")
     slot_start: datetime = Field(alias="slotStart")
+    time_zone: str | None = Field(default=None, alias="timeZone")
 
 
 class BookAppointmentResponse(BaseModel):

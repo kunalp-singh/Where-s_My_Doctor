@@ -8,6 +8,7 @@ from beanie import PydanticObjectId
 from beanie.operators import In
 from fastapi import HTTPException, status
 
+from ..config import get_settings
 from ..models.appointment import Appointment
 from ..models.booking_session import BookingSession
 from ..models.clinical import SymptomForm, VisitNotes
@@ -294,11 +295,13 @@ async def create_appointment_hold(patient_id: str, payload: BookAppointmentReque
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Slot is already booked or completed.")
 
     hold_expires = now + timedelta(minutes=10)
+    time_zone = payload.time_zone or get_settings().default_time_zone
     appointment = Appointment(
         patient_id=PydanticObjectId(patient_id),
         doctor_id=doctor.id,
         slot_start=req_slot_start,
         slot_end=slot_end,
+        time_zone=time_zone,
         status=AppointmentStatus.HELD,
         hold_expires_at=hold_expires,
     )
@@ -327,6 +330,7 @@ async def create_appointment_hold(patient_id: str, payload: BookAppointmentReque
                     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This slot is currently held by another patient.")
                 else:
                     existing.patient_id = PydanticObjectId(patient_id)
+                    existing.time_zone = time_zone
                     existing.status = AppointmentStatus.HELD
                     existing.hold_expires_at = hold_expires
                     await existing.save()
@@ -367,66 +371,63 @@ async def confirm_appointment_hold(patient_id: str, appointment_id: str) -> Pati
     doctor = await User.get(appointment.doctor_id)
     if doctor is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
+    patient = await User.get(appointment.patient_id)
+    if patient is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
 
-    # Sync Google Calendar
+    # Sync only the patient's Google Calendar. Booking remains confirmed if this fails.
     try:
         from .google_calendar import sync_google_calendar_event
         from ..models.calendar import GoogleCalendarCredential
-        
-        patient = await User.get(appointment.patient_id)
-        if patient:
-            cred_p = await GoogleCalendarCredential.find_one(GoogleCalendarCredential.user_id == patient.id)
-            if cred_p:
-                await sync_google_calendar_event(
-                    str(patient.id),
-                    appointment,
-                    owner="patient",
-                    title=f"Appointment with Dr. {doctor.name}",
-                    description="Consultation on Appointment Care Portal",
-                    attendee_email=doctor.email,
-                )
-        
-            cred_d = await GoogleCalendarCredential.find_one(GoogleCalendarCredential.user_id == doctor.id)
-            if cred_d:
-                await sync_google_calendar_event(
-                    str(doctor.id),
-                    appointment,
-                    owner="doctor",
-                    title=f"Consultation: {patient.name}",
-                    description="Consultation on Appointment Care Portal",
-                    attendee_email=patient.email,
-                )
+
+        cred_p = await GoogleCalendarCredential.find_one(GoogleCalendarCredential.user_id == patient.id)
+        if cred_p:
+            await sync_google_calendar_event(
+                str(patient.id),
+                appointment,
+                owner="patient",
+                title=f"Appointment with Dr. {doctor.name}",
+                description=(
+                    "CareConnect appointment\n\n"
+                    f"Patient: {patient.name}\n"
+                    f"Doctor: Dr. {doctor.name}\n"
+                    f"Doctor email: {doctor.email}\n"
+                    f"Time zone: {appointment.time_zone}"
+                ),
+                attendee_email=str(doctor.email),
+                time_zone=appointment.time_zone,
+            )
     except Exception as g_err:
         import logging
         logging.getLogger("appointment_care").error("Google Calendar sync failed: %s", g_err)
 
+    start_text = appointment.slot_start.isoformat()
+    end_text = appointment.slot_end.isoformat()
+    text_body = (
+        f"Hello {patient.name},\n\n"
+        f"Your appointment with Dr. {doctor.name} is confirmed.\n\n"
+        f"Date and time: {start_text} to {end_text}\n"
+        f"Time zone: {appointment.time_zone}\n"
+        f"Doctor email: {doctor.email}\n\n"
+        "Please arrive 10 minutes early and complete any requested symptom intake before your visit."
+    )
+    html_body = (
+        f"<p>Hello {patient.name},</p>"
+        f"<p>Your appointment with <strong>Dr. {doctor.name}</strong> is confirmed.</p>"
+        "<ul>"
+        f"<li><strong>Date and time:</strong> {start_text} to {end_text}</li>"
+        f"<li><strong>Time zone:</strong> {appointment.time_zone}</li>"
+        f"<li><strong>Doctor email:</strong> {doctor.email}</li>"
+        "</ul>"
+        "<p>Please arrive 10 minutes early and complete any requested symptom intake before your visit.</p>"
+    )
     await dispatch_appointment_notification(
         str(appointment.id),
         NotificationType.BOOKING_CONFIRMATION,
         subject="Appointment confirmed",
-        body=(
-            f"Hello,\n\nYour appointment with Dr. {doctor.name} is confirmed for "
-            f"{appointment.slot_start.isoformat()} to {appointment.slot_end.isoformat()}.\n"
-            "Please arrive 10 minutes early and complete the symptom form before your visit."
-        ),
+        body=text_body,
+        html_body=html_body,
     )
-
-    # Send confirmation email to patient
-    try:
-        from .email_service import send_appointment_confirmation
-        email_body = f"""
-        <p>Hello {patient.name},</p>
-        <p>Your appointment with Dr. {doctor.name} is confirmed for {appointment.slot_start.isoformat()} to {appointment.slot_end.isoformat()}.</p>
-        <p>Please arrive 10 minutes early and complete the symptom form before your visit.</p>
-        """
-        await send_appointment_confirmation(
-            email=patient.email,
-            subject="Appointment Confirmed",
-            html_body=email_body,
-        )
-    except Exception as email_err:
-        import logging
-        logging.getLogger("appointment_care").error("Email confirmation failed: %s", email_err)
 
     return PatientAppointmentResponse(
         appointment_id=str(appointment.id),
@@ -669,4 +670,3 @@ async def get_patient_appointment_detail(patient_id: str, appointment_id: str) -
         symptom_summary_status=form.status if form else None,
         ai_post_visit_summary_status=notes.status if notes else None,
     )
-

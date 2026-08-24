@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     google_redirect_uri: str = "http://127.0.0.1:8000/calendar/google/callback"
     google_auth_redirect_uri: str = "http://127.0.0.1:8000/auth/google/callback"
     frontend_url: str = "http://localhost:3000"
+    default_time_zone: str = "UTC"
     google_token_encryption_secret: str = Field(default="development-encryption-secret-key-32+bytes", min_length=32)
     gmail_address: str = ""
     gmail_app_password: str = ""
