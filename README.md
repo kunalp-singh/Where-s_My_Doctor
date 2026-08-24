@@ -1,10 +1,46 @@
-# CareConnect - Doctor Appointment & Care Platform
+# 🏥 CareConnect - Doctor Appointment & Care Platform
 
-CareConnect is a comprehensive healthcare platform connecting Patients, Doctors, and Administrators. It manages the complete appointment lifecycle with advanced features like AI symptom parsing, post-visit summary generation, Google Calendar synchronization, leave-conflict management, and reliable notification retries.
+[![Live App](https://img.shields.io/badge/Live%20App-Demo-brightgreen?style=for-the-badge)](https://where-s-my-doctor.vercel.app/)
+[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-blue?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
+[![Next.js](https://img.shields.io/badge/Frontend-Next.js-black?style=for-the-badge&logo=next.js)](https://nextjs.org)
+[![MongoDB](https://img.shields.io/badge/Database-MongoDB-green?style=for-the-badge&logo=mongodb)](https://www.mongodb.com)
+
+**CareConnect** (Where's My Doctor) is an end-to-end healthcare coordination platform connecting Patients, Doctors, and Administrators. Features include symptom analysis, automated doctor-matching suggestions, appointment booking, AI-generated intake summaries, post-visit documentation, Google Calendar synchronization, and resilient email notification pipelines.
+
+🔗 **Production Live Link:** [https://where-s-my-doctor.vercel.app/](https://where-s-my-doctor.vercel.app/)
 
 ---
 
-## 1. Setup Guide
+## 🏛️ System Architecture
+
+The application is built on a decoupled frontend/backend structure, integrating serverless deployments with background worker scheduling.
+
+```mermaid
+graph TD
+    classDef client fill:#f9f7f1,stroke:#3e6b63,stroke-width:2px;
+    classDef main fill:#edf4ef,stroke:#21322a,stroke-width:2px;
+    classDef external fill:#f1f5f9,stroke:#475569,stroke-dasharray: 5 5;
+
+    Patient[Patient Web Portal<br>Next.js / Tailwind]:::client -->|HTTP Requests| API[FastAPI backend<br>Vercel Serverless]:::main
+    Doctor[Doctor Web Portal<br>Next.js / Tailwind]:::client -->|HTTP Requests| API
+    Admin[Admin Web Portal<br>Next.js / Tailwind]:::client -->|HTTP Requests| API
+    
+    API -->|Beanie ODM| DB[(MongoDB Atlas)]:::main
+    API -->|Queue Tasks| Redis[(Redis Broker)]:::main
+    
+    Worker[Celery Worker]:::main <-->|Fetch/Execute| Redis
+    Beat[Celery Beat Scheduler]:::main -->|Trigger Reminders| Redis
+    
+    API -->|Google OAuth / Calendar API| GCal[Google Calendar API]:::external
+    API -->|Resend REST API| Resend[Resend Email API]:::external
+    API -->|google-genai SDK| Gemini[Gemini AI Models]:::external
+    
+    Worker -->|Send Emails| Resend
+```
+
+---
+
+## 🚀 1. Setup Guide
 
 ### Local Development Setup
 
@@ -52,7 +88,7 @@ Open `http://localhost:3000` to access the web application.
 
 ---
 
-## 2. Environment Configuration (`.env.example`)
+## ⚙️ 2. Environment Configuration (`.env.example`)
 
 ```env
 APP_NAME="Appointment Care"
@@ -82,65 +118,19 @@ GEMINI_API_KEY="your_gemini_api_key"
 
 ---
 
-## 3. Database Schema (MongoDB / Beanie)
+## 📊 3. Database Schema (MongoDB / Beanie)
 
-### Users Collection (`users`)
-* `email`: String (Unique)
-* `password_hash`: String
-* `role`: Enum (`patient`, `doctor`, `admin`)
-* `status`: Enum (`pending_approval`, `profile_incomplete`, `active`, `rejected`)
-* `name`: String
-
-### Doctor Profiles Collection (`doctor_profiles`)
-* `user_id`: ObjectId reference to `users`
-* `specialisation`: String
-* `working_hours`: Array of `WorkingHour` embedded docs (day_of_week, start_time, end_time)
-* `leave_days`: Array of `LeaveDay` embedded docs (date)
-* `slot_duration_minutes`: Integer (default 30)
-
-### Appointments Collection (`appointments`)
-* `patient_id`: ObjectId reference to `users`
-* `doctor_id`: ObjectId reference to `users`
-* `slot_start`: DateTime
-* `slot_end`: DateTime
-* `time_zone`: String (e.g. `America/New_York`)
-* `status`: Enum (`held`, `booked`, `completed`, `cancelled`)
-* `hold_expires_at`: DateTime (Nullable)
-* `google_calendar_event_id_patient`: String (Nullable)
-* `google_calendar_event_id_doctor`: String (Nullable)
-
-### Symptom Intake Forms Collection (`symptom_forms`)
-* `appointment_id`: ObjectId reference to `appointments`
-* `symptoms_text`: String
-* `ai_pre_visit_summary`: JSON object (urgency, chief_complaint, recommended_specialisation, follow_up_questions)
-* `status`: Enum (`processing_summary`, `summary_ready`, `summary_failed`)
-
-### Visit Notes Collection (`visit_notes`)
-* `appointment_id`: ObjectId reference to `appointments`
-* `diagnosis`: String
-* `doctor_notes`: String
-* `prescription`: Array of `PrescriptionItem` embedded docs (medication_name, dosage, frequency, duration_days, instructions)
-* `ai_post_visit_summary`: JSON object (summary, follow_up_steps, red_flags)
-* `status`: Enum (`processing_summary`, `summary_ready`, `summary_failed`)
-
-### Google Calendar Credentials Collection (`google_calendar_credentials`)
-* `user_id`: ObjectId reference to `users` (Unique)
-* `access_token_encrypted`: String
-* `refresh_token_encrypted`: String
-* `token_expiry_at`: DateTime
-* `scopes`: Array of Strings
-
-### Notification Logs Collection (`notification_logs`)
-* `appointment_id`: ObjectId reference to `appointments`
-* `type`: Enum (`booking_confirmation`, `reminder`, `cancellation`, `leave_conflict`)
-* `channel`: Enum (`email`)
-* `status`: Enum (`pending`, `sent`, `retrying`, `failed`)
-* `attempts`: Integer (default 0)
-* `last_error`: String (Nullable)
+* **Users (`users`):** Stores user registration details, credentials hashes, and active roles (`patient`, `doctor`, `admin`).
+* **Doctor Profiles (`doctor_profiles`):** Stores doctor specialisation, weekly availability schedule, custom slot duration, and leave days.
+* **Appointments (`appointments`):** Manages appointment time intervals, status transitions (`held`, `booked`, `completed`, `cancelled`), and linked Google Calendar event IDs for both patient and doctor.
+* **Symptom Intake Forms (`symptom_forms`):** Tracks the symptom intake details submitted by patients and the pre-visit summary metadata parsed by Gemini.
+* **Visit Notes (`visit_notes`):** Holds clinical documentation, diagnosis, prescriptions, and post-visit plans.
+* **Google Calendar Credentials (`google_calendar_credentials`):** Encrypted OAuth credentials and refresh tokens linked to user IDs.
+* **Notification Logs (`notification_logs`):** Audit outbox tracking email notification statuses, sending attempts, and gateway error messages.
 
 ---
 
-## 4. API Endpoints
+## 🔌 4. API Endpoints
 
 ### Authentication (`/auth`)
 * `POST /auth/register`: Public registration (restricted to `patient` and `doctor` roles)
@@ -172,7 +162,7 @@ GEMINI_API_KEY="your_gemini_api_key"
 
 ---
 
-## 5. Google Calendar API Setup Steps
+## 📅 5. Google Calendar API Setup Steps
 
 To set up Google Calendar syncing:
 1. Go to [Google Cloud Console](https://console.cloud.google.com/).
@@ -186,7 +176,7 @@ To set up Google Calendar syncing:
 
 ---
 
-## 6. LLM Prompts & Failure Handling
+## 🤖 6. LLM Prompts & Failure Handling
 
 The application uses Gemini hosted models (`gemini-3.7-flash` with fallback to `gemini-2.5-flash`) via the `google-genai` SDK.
 
