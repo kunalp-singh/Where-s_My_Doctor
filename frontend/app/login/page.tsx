@@ -7,7 +7,7 @@ import { Button } from "../../components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "../../components/ui/Card";
 import { useAuth } from "../../lib/AuthContext";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
