@@ -58,7 +58,7 @@ DOCTORS_DATA = [
     },
     {
         "name": "Dr. Sunita Kapoor",
-        "email": "dr.sunita.kapoor@careconnect.in",
+        "email": "kunalps6266@gmail.com",
         "specialisation": "General Medicine",
         "password": "DoctorPassword123!",
         "start_time": time(8, 30),
