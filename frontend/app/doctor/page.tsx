@@ -14,7 +14,8 @@ export default function DoctorDashboardPage() {
   const router = useRouter();
   const [appointments, setAppointments] = useState<DoctorAppointmentItem[]>([]);
   const [loadingData, setLoadingData] = useState(true);
-  const [viewMode, setViewMode] = useState<"today" | "all">("all");
+  const [activeTab, setActiveTab] = useState<"queue" | "history">("queue");
+  const [timeFilter, setTimeFilter] = useState<"today" | "all">("all");
 
   useEffect(() => {
     if (authStatus === "unauthenticated") {
@@ -60,8 +61,16 @@ export default function DoctorDashboardPage() {
   const dd = String(d.getDate()).padStart(2, "0");
   const todayLocalStr = `${yyyy}-${mm}-${dd}`;
 
-  const displayedAppointments = appointments.filter((apt) => {
-    if (viewMode === "today") {
+  // Filter into Pending Active Queue vs Completed History
+  const activeQueue = appointments.filter(
+    (apt) => apt.status === "booked" || apt.status === "held"
+  );
+  const completedHistory = appointments.filter((apt) => apt.status === "completed");
+
+  const currentTabAppointments = activeTab === "queue" ? activeQueue : completedHistory;
+
+  const displayedAppointments = currentTabAppointments.filter((apt) => {
+    if (timeFilter === "today") {
       const aptDate = new Date(apt.slotStart);
       const aptYyyy = aptDate.getFullYear();
       const aptMm = String(aptDate.getMonth() + 1).padStart(2, "0");
@@ -103,39 +112,68 @@ export default function DoctorDashboardPage() {
         </header>
 
         <Card className="rounded-3xl border border-[#d7e2db] bg-[#f9f7f1] p-6 shadow-sm">
-          <div className="flex items-center justify-between border-b border-[#d7e2db]/70 pb-4">
-            <div>
-              <h2 className="text-xl font-bold tracking-tight text-[#21322a]">Patient Queue</h2>
-              <p className="text-xs text-[#587066]">
-                {displayedAppointments.length} patient appointments in queue
-              </p>
-            </div>
-            <div className="flex rounded-full border border-[#d7e2db] bg-white p-1">
+          {/* Main Navigation Tabs: Active Queue vs Completed History */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-[#d7e2db]/70 pb-4 gap-4">
+            <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => setViewMode("today")}
-                className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all duration-200 ${
-                  viewMode === "today" ? "bg-[#3e6b63] text-white shadow-sm" : "text-[#587066] hover:text-[#21322a]"
+                onClick={() => setActiveTab("queue")}
+                className={`relative pb-2 text-base font-bold transition-all duration-200 ${
+                  activeTab === "queue"
+                    ? "text-[#3e6b63] border-b-2 border-[#3e6b63]"
+                    : "text-[#587066] hover:text-[#21322a]"
                 }`}
               >
-                Today's Queue
+                Active Patient Queue
+                <span className="ml-2 rounded-full bg-[#dff0e5] px-2.5 py-0.5 text-xs font-bold text-[#23663d]">
+                  {activeQueue.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("history")}
+                className={`relative pb-2 text-base font-bold transition-all duration-200 ${
+                  activeTab === "history"
+                    ? "text-[#3e6b63] border-b-2 border-[#3e6b63]"
+                    : "text-[#587066] hover:text-[#21322a]"
+                }`}
+              >
+                Completed Visit Records
+                <span className="ml-2 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-bold text-gray-700">
+                  {completedHistory.length}
+                </span>
+              </button>
+            </div>
+
+            <div className="flex rounded-full border border-[#d7e2db] bg-white p-1 self-start md:self-auto">
+              <button
+                type="button"
+                onClick={() => setTimeFilter("today")}
+                className={`rounded-full px-4 py-1 text-xs font-bold transition-all duration-200 ${
+                  timeFilter === "today" ? "bg-[#3e6b63] text-white shadow-sm" : "text-[#587066] hover:text-[#21322a]"
+                }`}
+              >
+                Today
               </button>
               <button
                 type="button"
-                onClick={() => setViewMode("all")}
-                className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all duration-200 ${
-                  viewMode === "all" ? "bg-[#3e6b63] text-white shadow-sm" : "text-[#587066] hover:text-[#21322a]"
+                onClick={() => setTimeFilter("all")}
+                className={`rounded-full px-4 py-1 text-xs font-bold transition-all duration-200 ${
+                  timeFilter === "all" ? "bg-[#3e6b63] text-white shadow-sm" : "text-[#587066] hover:text-[#21322a]"
                 }`}
               >
-                All Scheduled
+                All Dates
               </button>
             </div>
           </div>
 
-          <div className="pt-4 space-y-3">
+          <div className="pt-5 space-y-3">
             {displayedAppointments.length === 0 ? (
               <div className="p-10 text-center text-xs text-[#587066]">
-                No scheduled patient appointments in your queue for this view.
+                {activeTab === "queue"
+                  ? "No active pending appointments in your queue for this view."
+                  : "No completed visit records found."}
               </div>
             ) : (
               displayedAppointments.map((apt) => {
@@ -150,23 +188,38 @@ export default function DoctorDashboardPage() {
                   minute: "2-digit",
                 });
 
+                const isCompleted = apt.status === "completed";
+
                 return (
                   <div
                     key={apt.id || apt.appointmentId}
-                    className="flex flex-col gap-3 rounded-2xl border border-[#d7e2db] bg-white p-4 transition-all duration-200 hover:border-[#3e6b63] hover:shadow-md sm:flex-row sm:items-center sm:justify-between"
+                    className={`flex flex-col gap-3 rounded-2xl border p-4 transition-all duration-200 sm:flex-row sm:items-center sm:justify-between ${
+                      isCompleted
+                        ? "border-[#d7e2db]/70 bg-gray-50/60 hover:bg-white"
+                        : "border-[#d7e2db] bg-white hover:border-[#3e6b63] hover:shadow-md"
+                    }`}
                   >
                     <div className="flex items-center gap-4">
                       <div
                         className={`h-3 w-3 rounded-full ${
-                          apt.urgency === "high" || apt.urgency === "urgent"
+                          isCompleted
+                            ? "bg-gray-400"
+                            : apt.urgency === "high" || apt.urgency === "urgent"
                             ? "bg-[#c94f4f] animate-pulse"
                             : "bg-[#3e6b63]"
                         }`}
                       />
                       <div>
-                        <h3 className="font-bold text-[#21322a] text-base">
-                          {apt.patientName || `Patient #${(apt.patientId || "").slice(-4)}`}
-                        </h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-[#21322a] text-base">
+                            {apt.patientName || `Patient #${(apt.patientId || "").slice(-4)}`}
+                          </h3>
+                          {isCompleted && (
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-green-700 bg-green-100 px-2 py-0.5 rounded-md">
+                              ✓ Completed
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs font-semibold text-[#3e6b63]">
                           {dateStr} • {timeStr}
                         </p>
@@ -182,12 +235,20 @@ export default function DoctorDashboardPage() {
                       <Badge variant={apt.urgency === "high" || apt.urgency === "urgent" ? "urgent" : "calm"}>
                         {(apt.urgency || "routine").toUpperCase()}
                       </Badge>
-                      <Badge variant="neutral">{apt.status.toUpperCase()}</Badge>
-                      <Link href={`/doctor/appointments/${apt.id || apt.appointmentId}`}>
-                        <Button variant="primary" size="sm" className="rounded-full">
-                          Start Consultation →
-                        </Button>
-                      </Link>
+                      
+                      {isCompleted ? (
+                        <Link href={`/doctor/appointments/${apt.id || apt.appointmentId}`}>
+                          <Button variant="ghost" size="sm" className="rounded-full text-xs font-bold border border-[#d7e2db] bg-white text-[#3e6b63] hover:bg-[#edf4ef]">
+                            View Saved Record 🔒
+                          </Button>
+                        </Link>
+                      ) : (
+                        <Link href={`/doctor/appointments/${apt.id || apt.appointmentId}`}>
+                          <Button variant="primary" size="sm" className="rounded-full shadow-sm">
+                            Start Consultation →
+                          </Button>
+                        </Link>
+                      )}
                     </div>
                   </div>
                 );

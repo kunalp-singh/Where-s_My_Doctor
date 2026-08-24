@@ -35,6 +35,7 @@ class DoctorNotesResponse(BaseModel):
 
     appointment_id: str = Field(alias="appointmentId")
     patient_name: str = Field(alias="patientName")
+    status: str = "booked"
     symptoms_text: str | None = Field(default=None, alias="symptomsText")
     ai_pre_visit_summary: dict | None = Field(default=None, alias="aiPreVisitSummary")
     doctor_notes: str = Field(alias="doctorNotes")

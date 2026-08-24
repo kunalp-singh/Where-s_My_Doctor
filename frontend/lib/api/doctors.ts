@@ -15,6 +15,7 @@ export interface DoctorAppointmentItem {
 export interface DoctorNotesResponse {
   appointmentId: string;
   patientName: string;
+  status?: string;
   symptomsText?: string;
   aiPreVisitSummary?: {
     urgency?: string;
@@ -27,8 +28,10 @@ export interface DoctorNotesResponse {
   };
   chiefComplaint?: string;
   diagnosis?: string;
+  doctorNotes?: string;
   notes?: string;
   prescriptions?: Array<{ medicationName: string; dosage: string; frequency: string; durationDays?: number }>;
+  prescription?: Array<{ medicationName: string; dosage: string; frequency: string; durationDays?: number }>;
 }
 
 export interface WorkingHourItem {

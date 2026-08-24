@@ -179,6 +179,7 @@ async def get_visit_detail(doctor_id: str, appointment_id: str) -> DoctorNotesRe
     return DoctorNotesResponse(
         appointment_id=str(appointment.id),
         patient_name=patient.name if patient else "Unknown Patient",
+        status=appointment.status,
         symptoms_text=symptoms_text,
         ai_pre_visit_summary=ai_summary,
         doctor_notes=notes.doctor_notes if notes else "",
