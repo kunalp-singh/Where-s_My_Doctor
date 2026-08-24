@@ -1,7 +1,0 @@
-[project]
-name = "appointment-care"
-version = "0.1.0"
-description = "Appointment Care FastAPI Backend & Next.js Frontend Application"
-
-[tool.vercel]
-entrypoint = "backend.app.main:app"

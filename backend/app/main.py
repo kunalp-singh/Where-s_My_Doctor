@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import logging
 
 from beanie import init_beanie
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -26,47 +27,63 @@ from .models import (
     VisitNotes,
 )
 
+logger = logging.getLogger("appointment_care")
+_db_initialized = False
+
+
+async def init_db():
+    global _db_initialized
+    if _db_initialized:
+        return
+    try:
+        settings = get_settings()
+        client = AsyncIOMotorClient(
+            settings.mongodb_uri,
+            serverSelectionTimeoutMS=10000,
+            tlsAllowInvalidCertificates=True,
+        )
+        database = client[settings.mongodb_database_name]
+        await init_beanie(
+            database,
+            document_models=[
+                User,
+                DoctorProfile,
+                PatientProfile,
+                Appointment,
+                BookingSession,
+                SymptomForm,
+                VisitNotes,
+                GoogleCalendarCredential,
+                MedicationReminder,
+                NotificationLog,
+            ],
+        )
+        _db_initialized = True
+        logger.info("Database initialized successfully.")
+    except Exception as e:
+        logger.error(f"Database initialization error: {e}")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    settings = get_settings()
-    client = AsyncIOMotorClient(
-        settings.mongodb_uri,
-        serverSelectionTimeoutMS=10000,
-        tlsAllowInvalidCertificates=True,
-    )
-    database = client[settings.mongodb_database_name]
-    await init_beanie(
-        database,
-        document_models=[
-            User,
-            DoctorProfile,
-            PatientProfile,
-            Appointment,
-            BookingSession,
-            SymptomForm,
-            VisitNotes,
-            GoogleCalendarCredential,
-            MedicationReminder,
-            NotificationLog,
-        ],
-    )
+    await init_db()
     yield
 
 
 app = FastAPI(title="Appointment Care API", lifespan=lifespan)
 
+
+@app.middleware("http")
+async def ensure_db_middleware(request: Request, call_next):
+    if not _db_initialized:
+        await init_db()
+    response = await call_next(request)
+    return response
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-    ],
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -77,3 +94,13 @@ app.include_router(google_calendar_router)
 app.include_router(admin_router)
 app.include_router(patient_router)
 app.include_router(doctor_router)
+
+
+@app.get("/")
+async def root():
+    return {"message": "Appointment Care API Server is running."}
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "db_initialized": _db_initialized}
