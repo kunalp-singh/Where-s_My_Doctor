@@ -411,6 +411,23 @@ async def confirm_appointment_hold(patient_id: str, appointment_id: str) -> Pati
         ),
     )
 
+    # Send confirmation email to patient
+    try:
+        from .email_service import send_appointment_confirmation
+        email_body = f"""
+        <p>Hello {patient.name},</p>
+        <p>Your appointment with Dr. {doctor.name} is confirmed for {appointment.slot_start.isoformat()} to {appointment.slot_end.isoformat()}.</p>
+        <p>Please arrive 10 minutes early and complete the symptom form before your visit.</p>
+        """
+        await send_appointment_confirmation(
+            email=patient.email,
+            subject="Appointment Confirmed",
+            html_body=email_body,
+        )
+    except Exception as email_err:
+        import logging
+        logging.getLogger("appointment_care").error("Email confirmation failed: %s", email_err)
+
     return PatientAppointmentResponse(
         appointment_id=str(appointment.id),
         doctor_id=str(doctor.id),
