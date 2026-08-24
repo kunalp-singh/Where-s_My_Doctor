@@ -41,19 +41,30 @@ SPECIALISATION_KEYWORDS = {
 
 
 async def search_doctors(query: str | None = None) -> list[DoctorSearchResult]:
-    doctors = await User.find(User.role == UserRole.DOCTOR).to_list()
+    doctors = await User.find(User.role == UserRole.DOCTOR, User.status == UserStatus.ACTIVE).to_list()
+    
+    doc_profiles = await DoctorProfile.find().to_list()
+    profile_map = {str(p.user_id): p for p in doc_profiles}
+
     if not query:
-        return [
-            DoctorSearchResult(
-                id=str(doctor.id),
-                name=doctor.name,
-                email=doctor.email,
-                specialisation=getattr(doctor, "specialisation", None) or "General Medicine",
-                working_hours=getattr(doctor, "working_hours", []),
-                slot_duration_minutes=getattr(doctor, "slot_duration_minutes", 30),
+        results: list[DoctorSearchResult] = []
+        for doctor in doctors:
+            prof = profile_map.get(str(doctor.id))
+            doc_spec = prof.specialisation if (prof and prof.specialisation) else (getattr(doctor, "specialisation", None) or "General Medicine")
+            w_hours = prof.working_hours if (prof and prof.working_hours) else getattr(doctor, "working_hours", [])
+            slot_dur = prof.slot_duration_minutes if (prof and prof.slot_duration_minutes) else getattr(doctor, "slot_duration_minutes", 30)
+
+            results.append(
+                DoctorSearchResult(
+                    id=str(doctor.id),
+                    name=doctor.name,
+                    email=doctor.email,
+                    specialisation=doc_spec,
+                    working_hours=w_hours,
+                    slot_duration_minutes=slot_dur,
+                )
             )
-            for doctor in doctors
-        ]
+        return results
 
     lowered = query.lower()
     matched_specs: set[str] = set()
@@ -63,8 +74,11 @@ async def search_doctors(query: str | None = None) -> list[DoctorSearchResult]:
 
     results: list[DoctorSearchResult] = []
     for doctor in doctors:
-        doc_spec = getattr(doctor, "specialisation", None) or "General Medicine"
+        prof = profile_map.get(str(doctor.id))
+        doc_spec = prof.specialisation if (prof and prof.specialisation) else (getattr(doctor, "specialisation", None) or "General Medicine")
         doc_name = doctor.name.lower()
+        w_hours = prof.working_hours if (prof and prof.working_hours) else getattr(doctor, "working_hours", [])
+        slot_dur = prof.slot_duration_minutes if (prof and prof.slot_duration_minutes) else getattr(doctor, "slot_duration_minutes", 30)
 
         if doc_spec in matched_specs or query.lower() in doc_name or query.lower() in doc_spec.lower():
             results.append(
@@ -73,8 +87,8 @@ async def search_doctors(query: str | None = None) -> list[DoctorSearchResult]:
                     name=doctor.name,
                     email=doctor.email,
                     specialisation=doc_spec,
-                    working_hours=getattr(doctor, "working_hours", []),
-                    slot_duration_minutes=getattr(doctor, "slot_duration_minutes", 30),
+                    working_hours=w_hours,
+                    slot_duration_minutes=slot_dur,
                 )
             )
     return results
