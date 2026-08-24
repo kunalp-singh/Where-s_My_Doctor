@@ -46,52 +46,69 @@ export default function AdminDashboardPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f1f6f2] px-6 py-10 text-[#21322a]">
+    <main className="min-h-screen bg-gradient-to-b from-[#edf4ef] via-[#f8f6f0] to-[#f1f6f2] px-6 py-10 text-[#21322a]">
       <div className="mx-auto max-w-5xl space-y-8">
-        <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        {/* Organic Header */}
+        <header
+          className="flex flex-col gap-4 border border-[#d7e2db]/70 bg-[#f9f7f1]/90 p-8 backdrop-blur-md shadow-sm md:flex-row md:items-center md:justify-between"
+          style={{ borderRadius: "30% 70% 45% 55% / 65% 35% 65% 35%" }}
+        >
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-[#587066]">
+            <p className="text-xs font-bold uppercase tracking-widest text-[#3e6b63]">
               System Administration
             </p>
-            <h1 className="mt-1 text-3xl font-bold text-[#21322a]">
+            <h1 className="mt-1 text-3xl font-black text-[#21322a]">
               Clinic Overview & Management
             </h1>
           </div>
           <Link href="/admin/doctors">
-            <Button className="rounded-full bg-[#3e6b63] px-6 py-3 text-sm font-semibold text-white hover:bg-[#345b54]">
+            <Button className="rounded-full bg-[#3e6b63] px-6 py-3 text-sm font-semibold text-white hover:bg-[#345b54] shadow-md">
               Manage Doctor Accounts
             </Button>
           </Link>
         </header>
 
+        {/* Organic Summary Stat Containers (Pebble Shapes) */}
         <section className="grid gap-6 sm:grid-cols-4">
-          <Card className="rounded-3xl border border-[#d7e2db] bg-[#f9f7f1] p-6 shadow-sm">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#587066]">
+          <div
+            className="p-6 bg-white border border-[#3e6b63]/20 shadow-sm transition-transform duration-200 hover:scale-105"
+            style={{ borderRadius: "50% 50% 65% 35% / 40% 60% 40% 60%" }}
+          >
+            <span className="text-xs font-bold uppercase tracking-wider text-[#587066]">
               Active Doctors
             </span>
-            <p className="mt-2 text-3xl font-extrabold text-[#21322a]">{activeDoctorsCount}</p>
-          </Card>
+            <p className="mt-2 text-3xl font-black text-[#21322a]">{activeDoctorsCount}</p>
+          </div>
 
-          <Card className="rounded-3xl border border-[#d7e2db] bg-[#f9f7f1] p-6 shadow-sm">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#587066]">
+          <div
+            className="p-6 bg-red-50/70 border border-red-200 shadow-sm transition-transform duration-200 hover:scale-105"
+            style={{ borderRadius: "35% 65% 55% 45% / 60% 40% 60% 40%" }}
+          >
+            <span className="text-xs font-bold uppercase tracking-wider text-red-800">
               Pending Approvals
             </span>
-            <p className="mt-2 text-3xl font-extrabold text-[#c94f4f]">{pendingApprovalsCount}</p>
-          </Card>
+            <p className="mt-2 text-3xl font-black text-red-700">{pendingApprovalsCount}</p>
+          </div>
 
-          <Card className="rounded-3xl border border-[#d7e2db] bg-[#f9f7f1] p-6 shadow-sm">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#587066]">
+          <div
+            className="p-6 bg-[#f8f6f0] border border-[#d7e2db] shadow-sm transition-transform duration-200 hover:scale-105"
+            style={{ borderRadius: "60% 40% 40% 60% / 45% 55% 45% 55%" }}
+          >
+            <span className="text-xs font-bold uppercase tracking-wider text-[#587066]">
               Total Appointments
             </span>
-            <p className="mt-2 text-3xl font-extrabold text-[#21322a]">12</p>
-          </Card>
+            <p className="mt-2 text-3xl font-black text-[#21322a]">12</p>
+          </div>
 
-          <Card className="rounded-3xl border border-[#d7e2db] bg-[#f9f7f1] p-6 shadow-sm">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#587066]">
+          <div
+            className="p-6 bg-[#dff0e5]/80 border border-[#bce2cb] shadow-sm transition-transform duration-200 hover:scale-105"
+            style={{ borderRadius: "40% 60% 30% 70% / 55% 45% 55% 45%" }}
+          >
+            <span className="text-xs font-bold uppercase tracking-wider text-[#23663d]">
               Celery Tasks
             </span>
-            <p className="mt-2 text-3xl font-extrabold text-[#3e6b63]">Active</p>
-          </Card>
+            <p className="mt-2 text-3xl font-black text-[#23663d]">Active</p>
+          </div>
         </section>
 
         <Card className="rounded-3xl border border-[#d7e2db] bg-[#f9f7f1] p-6 shadow-sm">

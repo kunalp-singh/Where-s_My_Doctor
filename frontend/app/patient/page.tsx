@@ -76,16 +76,11 @@ export default function PatientDashboardPage() {
 
   return (
     <main className="relative min-h-screen bg-gradient-to-b from-[#edf4ef] via-[#f8f6f0] to-[#f1f6f2] px-6 py-10 text-[#21322a]">
-      {/* Background Botanical Overlay */}
-      <div className="pointer-events-none absolute right-0 top-0 h-96 w-96 opacity-[0.04] select-none">
-        <svg viewBox="0 0 200 200" fill="none" stroke="#21322a" strokeWidth="2">
-          <path d="M100 20C100 20 60 70 60 120C60 170 100 180 100 180C100 180 140 170 140 120C140 70 100 20 100 20Z" />
-          <path d="M100 20V180" />
-        </svg>
-      </div>
-
-      <div className="relative z-10 mx-auto max-w-5xl space-y-10">
-        <header className="flex flex-col gap-4 rounded-3xl border border-[#d7e2db]/70 bg-[#f9f7f1]/80 p-8 backdrop-blur-md shadow-[0_8px_30px_rgba(44,66,58,0.06)] md:flex-row md:items-center md:justify-between">
+      <div className="relative z-10 mx-auto max-w-5xl space-y-8">
+        {/* Organic Header */}
+        <header className="flex flex-col gap-4 border border-[#d7e2db]/70 bg-[#f9f7f1]/90 p-8 backdrop-blur-md shadow-sm md:flex-row md:items-center md:justify-between"
+          style={{ borderRadius: "32% 68% 45% 55% / 70% 30% 70% 30%" }}
+        >
           <div className="space-y-1">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-[#dff0e5] px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-[#23663d]">
               <span className="h-1.5 w-1.5 rounded-full bg-[#23663d]" />
@@ -108,6 +103,42 @@ export default function PatientDashboardPage() {
           </Link>
         </header>
 
+        {/* Organic Summary Stat Containers (Pebble Shapes) */}
+        <div className="grid gap-6 sm:grid-cols-3">
+          <div
+            className="p-6 bg-white border border-[#3e6b63]/20 shadow-sm space-y-2 transition-transform duration-200 hover:scale-[1.02]"
+            style={{ borderRadius: "50% 50% 65% 35% / 40% 60% 40% 60%" }}
+          >
+            <span className="text-2xl">📅</span>
+            <h3 className="text-2xl font-black text-[#21322a]">{upcomingAppointments.length}</h3>
+            <p className="text-xs font-bold text-[#3e6b63] uppercase tracking-wider">
+              Upcoming Visits
+            </p>
+          </div>
+
+          <div
+            className="p-6 bg-[#f8f6f0] border border-[#d7e2db] shadow-sm space-y-2 transition-transform duration-200 hover:scale-[1.02]"
+            style={{ borderRadius: "35% 65% 55% 45% / 60% 40% 60% 40%" }}
+          >
+            <span className="text-2xl">📋</span>
+            <h3 className="text-2xl font-black text-[#21322a]">{completedAppointments.length}</h3>
+            <p className="text-xs font-bold text-[#587066] uppercase tracking-wider">
+              Completed Records
+            </p>
+          </div>
+
+          <div
+            className="p-6 bg-[#dff0e5]/80 border border-[#bce2cb] shadow-sm space-y-2 transition-transform duration-200 hover:scale-[1.02]"
+            style={{ borderRadius: "60% 40% 40% 60% / 45% 55% 45% 55%" }}
+          >
+            <span className="text-2xl">🛡️</span>
+            <h3 className="text-lg font-extrabold text-[#23663d]">Care Plan Active</h3>
+            <p className="text-xs font-medium text-[#21322a]">
+              AI pre-visit intake & 2-way Google sync active
+            </p>
+          </div>
+        </div>
+
         {/* Upcoming Appointments Section */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
@@ -118,7 +149,10 @@ export default function PatientDashboardPage() {
           </div>
 
           {upcomingAppointments.length === 0 ? (
-            <Card className="rounded-3xl border border-[#d7e2db] bg-[#f9f7f1] p-10 text-center shadow-sm">
+            <div
+              className="border border-[#d7e2db] bg-[#f9f7f1] p-10 text-center shadow-sm"
+              style={{ borderRadius: "40% 60% 50% 50% / 50% 40% 60% 50%" }}
+            >
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-[#edf4ef] text-[#3e6b63]">
                 <svg className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                   <path d="M12 22V12" />
@@ -137,11 +171,15 @@ export default function PatientDashboardPage() {
                   </Button>
                 </Link>
               </div>
-            </Card>
+            </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
               {upcomingAppointments.map((apt) => (
-                <Card key={apt.id} hoverable className="rounded-3xl border border-[#d7e2db] bg-[#f9f7f1] p-6 shadow-sm">
+                <div
+                  key={apt.id}
+                  className="border border-[#d7e2db] bg-white p-6 shadow-sm transition-all duration-200 hover:border-[#3e6b63] hover:shadow-md"
+                  style={{ borderRadius: "24px 12px 28px 16px" }}
+                >
                   <div className="flex items-start justify-between">
                     <div>
                       <span className="text-[10px] font-bold uppercase tracking-wider text-[#3e6b63]">
@@ -189,7 +227,7 @@ export default function PatientDashboardPage() {
                       </span>
                     </Link>
                   </div>
-                </Card>
+                </div>
               ))}
             </div>
           )}
@@ -199,9 +237,9 @@ export default function PatientDashboardPage() {
         <section className="space-y-4 pt-4">
           <h2 className="text-xl font-bold tracking-tight text-[#21322a]">Recent Visit Summaries</h2>
           {completedAppointments.length === 0 ? (
-            <Card className="rounded-3xl border border-[#d7e2db] bg-[#f9f7f1] p-6 text-center text-xs text-[#587066]">
+            <div className="rounded-2xl border border-[#d7e2db] bg-[#f9f7f1] p-6 text-center text-xs text-[#587066]">
               No completed visits or AI summaries logged yet.
-            </Card>
+            </div>
           ) : (
             <div className="space-y-4">
               {completedAppointments.map((apt) => (
