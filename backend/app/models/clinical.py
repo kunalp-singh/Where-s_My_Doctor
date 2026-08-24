@@ -26,9 +26,10 @@ class SymptomForm(Document):
 
 
 class VisitNotes(Document):
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     appointment_id: Annotated[PydanticObjectId, Field(alias="appointmentId")]
+    diagnosis: str | None = None
     doctor_notes: str = Field(alias="doctorNotes")
     prescription: list[PrescriptionItem] = Field(default_factory=list)
     ai_post_visit_summary: PostVisitSummary | None = Field(default=None, alias="aiPostVisitSummary")

@@ -143,7 +143,12 @@ export default function DoctorSelectionPage() {
     { label: "4. Confirm", active: false },
   ];
 
-  const urgencyTone = session?.aiSummary?.urgency === "high" ? "urgent" : "calm";
+  const urgencyVal = (session?.aiSummary?.urgency || "").toLowerCase();
+  const urgencyTone: "urgent" | "warning" | "calm" = ["high", "urgent", "critical"].includes(urgencyVal)
+    ? "urgent"
+    : urgencyVal === "medium"
+    ? "warning"
+    : "calm";
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-[#edf4ef] via-[#f8f6f0] to-[#f1f6f2] px-6 py-10 text-[#21322a]">
@@ -153,8 +158,8 @@ export default function DoctorSelectionPage() {
             <span className="text-[11px] font-bold uppercase tracking-widest text-[#3e6b63]">
               Step 2 of 4
             </span>
-            <h1 className="text-3xl font-black text-[#21322a]">
-              AI Triage & Recommended Specialist
+            <h1 className="text-3xl font-extrabold text-[#21322a]">
+              Recommended Medical Specialists
             </h1>
           </div>
 
@@ -167,10 +172,10 @@ export default function DoctorSelectionPage() {
           </div>
         )}
 
-        {/* AI Triage Card */}
+        {/* AI Insight Card */}
         {session?.aiSummary && (
           <AIInsightCard
-            title="AI Pre-Visit Triage Assessment"
+            title="Pre-Visit AI Clinical Triage"
             summary={`Chief Complaint: ${session.aiSummary.chiefComplaint || session.symptomsText}`}
             insights={
               session.aiSummary.followUpQuestions || [
@@ -179,6 +184,7 @@ export default function DoctorSelectionPage() {
               ]
             }
             tone={urgencyTone}
+            badgeLabel={`${(session.aiSummary.urgency || "routine").toUpperCase()} URGENCY`}
           />
         )}
 

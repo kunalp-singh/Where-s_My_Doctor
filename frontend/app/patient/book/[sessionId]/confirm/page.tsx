@@ -147,7 +147,14 @@ export default function BookingConfirmPage() {
                     "What triggers or relieves these symptoms?",
                   ]
                 }
-                tone={session.aiSummary.urgency === "high" ? "urgent" : "calm"}
+                tone={
+                  ["high", "urgent", "critical"].includes((session.aiSummary.urgency || "").toLowerCase())
+                    ? "urgent"
+                    : (session.aiSummary.urgency || "").toLowerCase() === "medium"
+                    ? "warning"
+                    : "calm"
+                }
+                badgeLabel={`${(session.aiSummary.urgency || "routine").toUpperCase()} URGENCY`}
               />
             )}
 

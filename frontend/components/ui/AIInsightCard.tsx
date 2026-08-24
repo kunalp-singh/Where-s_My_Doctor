@@ -6,18 +6,21 @@ type AIInsightCardProps = {
   title: string;
   summary: string;
   insights?: string[];
-  tone?: "calm" | "urgent" | "neutral";
+  tone?: "calm" | "urgent" | "warning" | "neutral";
+  badgeLabel?: string;
   footer?: ReactNode;
 };
 
 const toneMap = {
-  calm: { label: "Calm", variant: "info" as const },
   urgent: { label: "Urgent Triage", variant: "urgent" as const },
+  warning: { label: "Moderate Priority", variant: "warning" as const },
+  calm: { label: "Routine Triage", variant: "info" as const },
   neutral: { label: "AI Clinical Summary", variant: "neutral" as const },
 };
 
-export function AIInsightCard({ title, summary, insights = [], tone = "neutral", footer }: AIInsightCardProps) {
-  const toneConfig = toneMap[tone];
+export function AIInsightCard({ title, summary, insights = [], tone = "neutral", badgeLabel, footer }: AIInsightCardProps) {
+  const toneConfig = toneMap[tone] || toneMap.neutral;
+  const labelToDisplay = badgeLabel || toneConfig.label;
   return (
     <Card className="relative overflow-hidden border-[#cce0d4] bg-gradient-to-br from-[#f4f8f5] via-[#f9f7f1] to-[#ebf3ee] shadow-[0_8px_30px_rgba(62,107,99,0.08)]">
       {/* Decorative leaf accent overlay */}
@@ -34,7 +37,7 @@ export function AIInsightCard({ title, summary, insights = [], tone = "neutral",
             </div>
             <CardDescription className="text-xs text-[#587066]">{summary}</CardDescription>
           </div>
-          <Badge variant={toneConfig.variant}>{toneConfig.label}</Badge>
+          <Badge variant={toneConfig.variant}>{labelToDisplay}</Badge>
         </div>
       </CardHeader>
 

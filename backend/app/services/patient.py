@@ -278,12 +278,28 @@ async def list_patient_appointments(patient_id: str) -> list[PatientAppointmentR
         if notes:
             prescriptions_list = []
             for p in notes.prescription or []:
-                prescriptions_list.append({
-                    "medicationName": getattr(p, "medication_name", None) or getattr(p, "medicationName", ""),
-                    "dosage": getattr(p, "dosage", ""),
-                    "frequency": getattr(p, "frequency", ""),
-                    "durationDays": getattr(p, "duration_days", None) or getattr(p, "durationDays", 7),
-                })
+                if isinstance(p, dict):
+                    m_name = p.get("medicationName") or p.get("medication_name") or ""
+                    dos = p.get("dosage") or ""
+                    freq = p.get("frequency") or ""
+                    dur = p.get("durationDays") or p.get("duration_days") or 7
+                    instr = p.get("instructions") or ""
+                else:
+                    m_name = getattr(p, "medication_name", None) or getattr(p, "medicationName", "") or ""
+                    dos = getattr(p, "dosage", "") or ""
+                    freq = getattr(p, "frequency", "") or ""
+                    dur = getattr(p, "duration_days", None) or getattr(p, "durationDays", 7) or 7
+                    instr = getattr(p, "instructions", "") or ""
+
+                if m_name:
+                    prescriptions_list.append({
+                        "medicationName": m_name,
+                        "dosage": dos,
+                        "frequency": freq,
+                        "durationDays": dur,
+                        "instructions": instr,
+                    })
+
             visit_notes_dict = {
                 "diagnosis": getattr(notes, "diagnosis", "") or "",
                 "notes": notes.doctor_notes or "",

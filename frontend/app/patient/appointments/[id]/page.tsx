@@ -150,7 +150,14 @@ export default function PatientAppointmentDetailPage() {
                 (q) => `Doctor Follow-up: ${q}`
               ),
             ]}
-            tone={appointment.symptomSummary.urgency === "urgent" ? "urgent" : "calm"}
+            tone={
+              ["high", "urgent", "critical"].includes((appointment.symptomSummary.urgency || "").toLowerCase())
+                ? "urgent"
+                : (appointment.symptomSummary.urgency || "").toLowerCase() === "medium"
+                ? "warning"
+                : "calm"
+            }
+            badgeLabel={`${appointment.symptomSummary.urgency.toUpperCase()} URGENCY`}
           />
         )}
 
@@ -165,8 +172,12 @@ export default function PatientAppointmentDetailPage() {
               ...((appointment.aiPostVisitSummary.redFlags || appointment.aiPostVisitSummary.red_flags || []).map(
                 (flag) => `Warning Sign: ${flag}`
               )),
+              ...((appointment.visitNotes?.prescriptions || []).map(
+                (p) => `Prescribed Medication: ${p.medicationName || (p as any).medication_name} (${p.dosage} — ${p.frequency})`
+              )),
             ]}
-            tone="calm"
+            tone="neutral"
+            badgeLabel="VISIT SUMMARY"
           />
         )}
 
