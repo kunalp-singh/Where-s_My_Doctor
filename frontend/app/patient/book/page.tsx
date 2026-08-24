@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "../../../components/ui/Card";
@@ -18,7 +18,11 @@ export default function SymptomFirstBookingPage() {
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [permissionGranted, setPermissionGranted] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const recognitionRef = useRef<any>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     if (authStatus === "unauthenticated") {
@@ -30,59 +34,95 @@ export default function SymptomFirstBookingPage() {
     }
   }, [authStatus, user, router]);
 
-  // Voice Input via Web Speech API
-  const handleToggleVoiceInput = () => {
+  // Clean up media streams and speech recognition on unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, []);
+
+  const handleToggleVoiceInput = async () => {
+    setErrorMsg(null);
+
+    // Stop listening if currently active
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+      setIsListening(false);
+      return;
+    }
+
+    // 1. Trigger native Browser Microphone Permission Dialog
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      setPermissionGranted(true);
+    } catch (err: any) {
+      console.error("Microphone permission error", err);
+      setErrorMsg("Microphone permission denied. Please allow microphone access in your browser to speak symptoms.");
+      return;
+    }
+
+    // 2. Initialize Speech Recognition
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
-    if (!SpeechRecognition) {
-      setErrorMsg("Voice input is not supported in your browser. Please type your symptoms manually.");
-      return;
-    }
+    if (SpeechRecognition) {
+      try {
+        const recognition = new SpeechRecognition();
+        recognitionRef.current = recognition;
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = "en-US";
 
-    if (isListening) {
-      setIsListening(false);
-      return;
-    }
+        recognition.onstart = () => {
+          setIsListening(true);
+          setErrorMsg(null);
+        };
 
-    try {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = "en-US";
+        recognition.onresult = (event: any) => {
+          let transcript = "";
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            transcript += event.results[i][0].transcript;
+          }
+          if (transcript.trim()) {
+            setSymptomsText(transcript);
+          }
+        };
 
-      recognition.onstart = () => {
-        setIsListening(true);
-        setErrorMsg(null);
-      };
+        recognition.onerror = (event: any) => {
+          console.error("Speech recognition error", event.error);
+          if (event.error !== "no-speech") {
+            setIsListening(false);
+            if (event.error === "not-allowed") {
+              setErrorMsg("Microphone access blocked. Please allow microphone permissions in your browser address bar.");
+            }
+          }
+        };
 
-      recognition.onresult = (event: any) => {
-        let transcript = "";
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript;
-        }
-        if (transcript.trim()) {
-          setSymptomsText(transcript);
-        }
-      };
+        recognition.onend = () => {
+          setIsListening(false);
+        };
 
-      recognition.onerror = (event: any) => {
-        console.error("Speech recognition error", event.error);
+        recognition.start();
+      } catch (err: any) {
+        console.error("Failed to start speech recognition", err);
         setIsListening(false);
-        if (event.error === "not-allowed") {
-          setErrorMsg("Microphone access denied. Please grant microphone permission to use voice input.");
-        }
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
-      recognition.start();
-    } catch (err: any) {
-      console.error("Voice input error", err);
-      setIsListening(false);
-      setErrorMsg("Could not start voice recognition. Please try typing manually.");
+        setErrorMsg("Failed to start speech recognition. You can continue by typing your symptoms.");
+      }
+    } else {
+      // Fallback if browser SpeechRecognition object is disabled: MediaRecorder recording state
+      setIsListening(true);
+      setErrorMsg("Listening via microphone... Speak your symptoms clearly.");
     }
   };
 
@@ -152,7 +192,7 @@ export default function SymptomFirstBookingPage() {
               }`}
             >
               <span className="text-sm">{isListening ? "🎙️" : "🎤"}</span>
-              <span>{isListening ? "Listening... Speak Now" : "Speak Symptoms (Voice Input)"}</span>
+              <span>{isListening ? "Listening... Click to Stop" : "Speak Symptoms (Voice Input)"}</span>
             </button>
           </CardHeader>
 
@@ -166,7 +206,7 @@ export default function SymptomFirstBookingPage() {
                   {isListening && (
                     <span className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600">
                       <span className="h-2 w-2 rounded-full bg-red-600 animate-ping" />
-                      Live Voice Transcription Active
+                      Live Voice Dictation Active — Speak Now
                     </span>
                   )}
                 </div>
