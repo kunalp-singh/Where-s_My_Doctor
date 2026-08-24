@@ -1,0 +1,54 @@
+from __future__ import annotations
+
+from datetime import date, datetime
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from ..models.embedded import LeaveDay, PostVisitSummary, PrescriptionItem, WorkingHour
+
+
+class DoctorAppointmentItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    appointment_id: str = Field(alias="appointmentId")
+    patient_id: str = Field(alias="patientId")
+    patient_name: str = Field(alias="patientName")
+    slot_start: datetime = Field(alias="slotStart")
+    slot_end: datetime = Field(alias="slotEnd")
+    status: str
+    urgency: str | None = None
+    chief_complaint: str | None = Field(default=None, alias="chiefComplaint")
+
+
+class DoctorVisitSummary(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    appointment_id: str = Field(alias="appointmentId")
+    doctor_notes: str = Field(alias="doctorNotes")
+    prescription: list[PrescriptionItem] = Field(default_factory=list)
+
+
+class DoctorNotesResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    appointment_id: str = Field(alias="appointmentId")
+    doctor_notes: str = Field(alias="doctorNotes")
+    prescription: list[PrescriptionItem] = Field(default_factory=list)
+    ai_post_visit_summary: PostVisitSummary | None = Field(default=None, alias="aiPostVisitSummary")
+
+
+class DoctorScheduleResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    doctor_id: str = Field(alias="doctorId")
+    specialisation: str
+    working_hours: list[WorkingHour] = Field(default_factory=list, alias="workingHours")
+    slot_duration_minutes: int = Field(default=30, alias="slotDurationMinutes")
+    leave_days: list[LeaveDay] = Field(default_factory=list, alias="leaveDays")
+
+
+class DoctorScheduleUpdate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    working_hours: list[WorkingHour] | None = Field(default=None, alias="workingHours")
+    slot_duration_minutes: int | None = Field(default=None, alias="slotDurationMinutes")
