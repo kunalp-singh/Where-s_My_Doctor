@@ -34,7 +34,7 @@ async def dispatch_appointment_notification(
     await log.save()
 
     settings = get_settings()
-    if not settings.gmail_address or not settings.gmail_app_password:
+    if not settings.resend_api_key:
         return log
 
     sent = await send_email(EmailMessage(to=str(patient.email), subject=subject, body=body))

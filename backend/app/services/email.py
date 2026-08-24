@@ -4,9 +4,7 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Sequence
 
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+import httpx
 
 from ..config import get_settings
 
@@ -28,60 +26,56 @@ class EmailMessage:
         return list(self.to)
 
 
-def _send_smtp_email_sync(
-    smtp_host: str,
-    smtp_port: int,
-    username: str,
-    password: str,
-    from_addr: str,
-    to_addrs: list[str],
-    subject: str,
-    body: str,
-    html_body: str | None = None,
-) -> None:
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = from_addr
-    msg["To"] = ", ".join(to_addrs)
-
-    msg.attach(MIMEText(body, "plain", "utf-8"))
-    if html_body:
-        msg.attach(MIMEText(html_body, "html", "utf-8"))
-
-    with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
-        server.starttls()
-        server.login(username, password)
-        server.sendmail(from_addr, to_addrs, msg.as_string())
-
-
 async def send_email(message: EmailMessage, *, retries: int = 3, backoff_seconds: float = 1.0) -> bool:
     settings = get_settings()
-    if not settings.gmail_address or not settings.gmail_app_password:
+    if not settings.resend_api_key:
         return False
 
     targets = message.recipients()
     if not targets:
         return False
 
+    # Resend API Payload
+    from_address = message.from_email or settings.resend_from_email or "onboarding@resend.dev"
+    if message.from_name:
+        from_address = f"{message.from_name} <{from_address}>"
+
+    payload: dict[str, object] = {
+        "from": from_address,
+        "to": targets,
+        "subject": message.subject,
+        "text": message.body,
+    }
+    if message.html_body:
+        payload["html"] = message.html_body
+    if message.reply_to:
+        payload["reply_to"] = message.reply_to
+    if message.metadata:
+        payload["tags"] = [{"name": k, "value": v} for k, v in message.metadata.items()]
+
+    headers = {
+        "Authorization": f"Bearer {settings.resend_api_key}",
+        "Content-Type": "application/json",
+    }
+
     for attempt in range(retries):
         try:
-            await asyncio.to_thread(
-                _send_smtp_email_sync,
-                smtp_host="smtp.gmail.com",
-                smtp_port=587,
-                username=settings.gmail_address,
-                password=settings.gmail_app_password,
-                from_addr=settings.gmail_address,
-                to_addrs=targets,
-                subject=message.subject,
-                body=message.body,
-                html_body=message.html_body,
-            )
-            return True
-        except Exception as exc:
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.post(
+                    "https://api.resend.com/emails",
+                    headers=headers,
+                    json=payload,
+                )
+            if response.status_code in {200, 201, 202}:
+                return True
+            if response.status_code in {429, 500, 502, 503, 504} and attempt < retries - 1:
+                await asyncio.sleep(backoff_seconds * (2**attempt))
+                continue
+            return False
+        except httpx.HTTPError as exc:
             import logging
             logging.getLogger("appointment_care").warning(
-                "SMTP email delivery attempt %d failed: %s", attempt + 1, exc
+                "Resend email delivery attempt %d failed: %s", attempt + 1, exc
             )
             if attempt < retries - 1:
                 await asyncio.sleep(backoff_seconds * (2**attempt))

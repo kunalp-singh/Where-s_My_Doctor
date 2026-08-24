@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     google_token_encryption_secret: str = Field(default="development-encryption-secret-key-32+bytes", min_length=32)
     gmail_address: str = ""
     gmail_app_password: str = ""
+    resend_api_key: str = ""
+    resend_from_email: str = "onboarding@resend.dev"
     sendgrid_api_key: str = ""
     sendgrid_from_email: str = "noreply@careconnect.local"
     sendgrid_from_name: str = "CareConnect"
