@@ -7,7 +7,7 @@ import { AIInsightCard } from "../../../../components/ui/AIInsightCard";
 import { Badge } from "../../../../components/ui/Badge";
 import { Button } from "../../../../components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "../../../../components/ui/Card";
-import { cancelPatientAppointment, listPatientAppointments, PatientAppointmentResponse } from "../../../../lib/api/patients";
+import { cancelPatientAppointment, getPatientAppointmentDetail, listPatientAppointments, PatientAppointmentResponse } from "../../../../lib/api/patients";
 import { useAuth } from "../../../../lib/AuthContext";
 
 export default function PatientAppointmentDetailPage() {
@@ -30,18 +30,26 @@ export default function PatientAppointmentDetailPage() {
         loadDetail();
       }
     }
-  }, [authStatus, user, router]);
+  }, [authStatus, user, router, appointmentId]);
 
   const loadDetail = async () => {
     setLoading(true);
     try {
-      const list = await listPatientAppointments();
-      const match = list.find((a) => a.id === appointmentId);
-      if (match) {
-        setAppointment(match);
+      const detail = await getPatientAppointmentDetail(appointmentId);
+      if (detail) {
+        setAppointment(detail);
       }
     } catch (err) {
-      console.error("Error loading appointment detail", err);
+      console.warn("Direct appointment detail fetch failed, falling back to list", err);
+      try {
+        const list = await listPatientAppointments();
+        const match = list.find((a) => a.id === appointmentId || a.appointmentId === appointmentId);
+        if (match) {
+          setAppointment(match);
+        }
+      } catch (listErr) {
+        console.error("Error loading appointment detail fallback", listErr);
+      }
     } finally {
       setLoading(false);
     }

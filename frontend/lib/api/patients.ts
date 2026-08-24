@@ -163,3 +163,8 @@ export async function listPatientAppointments(): Promise<PatientAppointmentRespo
   const list = await apiFetch<any[]>("/patients/appointments");
   return list.map(normalizeAppointmentResponse);
 }
+
+export async function getPatientAppointmentDetail(appointmentId: string): Promise<PatientAppointmentResponse> {
+  const raw = await apiFetch<any>(`/patients/appointments/${appointmentId}`);
+  return normalizeAppointmentResponse(raw);
+}

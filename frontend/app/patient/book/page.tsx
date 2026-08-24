@@ -76,14 +76,22 @@ export default function SymptomFirstBookingPage() {
   };
 
   const handleStopListening = () => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+      recognitionRef.current = null;
+    }
+
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       try {
         mediaRecorderRef.current.stop();
       } catch (e) {}
     } else if (audioChunksRef.current.length > 0) {
       const mime = mediaRecorderRef.current?.mimeType || "audio/webm";
+      const cleanMime = mime.split(";")[0];
       const audioBlob = new Blob(audioChunksRef.current, { type: mime });
-      processAudio(audioBlob, mime);
+      processAudio(audioBlob, cleanMime);
     }
 
     if (mediaStreamRef.current) {
@@ -93,6 +101,8 @@ export default function SymptomFirstBookingPage() {
     setIsListening(false);
   };
 
+  const recognitionRef = useRef<any>(null);
+
   const handleToggleVoiceInput = async () => {
     setErrorMsg(null);
 
@@ -101,6 +111,43 @@ export default function SymptomFirstBookingPage() {
       return;
     }
 
+    // Try Browser Native Web Speech API for real-time live transcription
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      try {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = "en-IN";
+
+        recognition.onresult = (event: any) => {
+          let transcript = "";
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            transcript += event.results[i][0].transcript;
+          }
+          if (transcript.trim()) {
+            setSymptomsText(transcript);
+          }
+        };
+
+        recognition.onerror = (event: any) => {
+          console.warn("Web Speech Recognition error:", event.error);
+        };
+
+        recognition.onend = () => {
+          setIsListening(false);
+        };
+
+        recognition.start();
+        recognitionRef.current = recognition;
+        setIsListening(true);
+        return;
+      } catch (e) {
+        console.warn("Failed to initialize Web Speech Recognition, falling back to MediaRecorder", e);
+      }
+    }
+
+    // Fallback to MediaRecorder + Gemini AI Audio Transcription
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -131,10 +178,11 @@ export default function SymptomFirstBookingPage() {
       };
 
       mediaRecorder.onstop = () => {
-        const mime = mediaRecorder.mimeType || "audio/webm";
-        const audioBlob = new Blob(audioChunksRef.current, { type: mime });
+        const rawMime = mediaRecorder.mimeType || "audio/webm";
+        const cleanMime = rawMime.split(";")[0].strip ? rawMime.split(";")[0].strip() : rawMime.split(";")[0];
+        const audioBlob = new Blob(audioChunksRef.current, { type: rawMime });
         if (audioBlob.size > 0) {
-          processAudio(audioBlob, mime);
+          processAudio(audioBlob, cleanMime);
         }
       };
 

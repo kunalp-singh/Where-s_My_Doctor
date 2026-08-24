@@ -488,3 +488,78 @@ async def session_confirm_appointment(patient_id: str, session_id: str) -> Patie
         await existing_form.save()
 
     return result
+
+
+async def get_patient_appointment_detail(patient_id: str, appointment_id: str) -> PatientAppointmentResponse:
+    appointment = await Appointment.get(PydanticObjectId(appointment_id))
+    if appointment is None or str(appointment.patient_id) != patient_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found")
+
+    doctor = await User.get(appointment.doctor_id)
+    form = await SymptomForm.find_one(SymptomForm.appointment_id == appointment.id)
+    notes = await VisitNotes.find_one(VisitNotes.appointment_id == appointment.id)
+
+    symptom_summary_dict = None
+    if form and form.ai_pre_visit_summary:
+        if isinstance(form.ai_pre_visit_summary, dict):
+            symptom_summary_dict = form.ai_pre_visit_summary
+        else:
+            symptom_summary_dict = {
+                "urgency": getattr(form.ai_pre_visit_summary, "urgency", "low"),
+                "chief_complaint": getattr(form.ai_pre_visit_summary, "chief_complaint", getattr(form.ai_pre_visit_summary, "chiefComplaint", "")),
+                "follow_up_questions": getattr(form.ai_pre_visit_summary, "follow_up_questions", []),
+            }
+
+    visit_notes_dict = None
+    ai_post_visit_dict = None
+    if notes:
+        prescriptions_list = []
+        for p in notes.prescription or []:
+            if isinstance(p, dict):
+                m_name = p.get("medicationName") or p.get("medication_name") or ""
+                dos = p.get("dosage") or ""
+                freq = p.get("frequency") or ""
+                dur = p.get("durationDays") or p.get("duration_days") or 7
+                instr = p.get("instructions") or ""
+            else:
+                m_name = getattr(p, "medication_name", None) or getattr(p, "medicationName", "") or ""
+                dos = getattr(p, "dosage", "") or ""
+                freq = getattr(p, "frequency", "") or ""
+                dur = getattr(p, "duration_days", None) or getattr(p, "durationDays", 7) or 7
+                instr = getattr(p, "instructions", "") or ""
+
+            if m_name:
+                prescriptions_list.append({
+                    "medicationName": m_name,
+                    "dosage": dos,
+                    "frequency": freq,
+                    "durationDays": dur,
+                    "instructions": instr,
+                })
+
+        visit_notes_dict = {
+            "diagnosis": getattr(notes, "diagnosis", "") or "",
+            "notes": notes.doctor_notes or "",
+            "prescriptions": prescriptions_list,
+        }
+        if notes.ai_post_visit_summary:
+            if isinstance(notes.ai_post_visit_summary, dict):
+                ai_post_visit_dict = notes.ai_post_visit_summary
+            else:
+                ai_post_visit_dict = {
+                    "summary": getattr(notes.ai_post_visit_summary, "summary", ""),
+                    "follow_up_steps": getattr(notes.ai_post_visit_summary, "follow_up_steps", []),
+                    "red_flags": getattr(notes.ai_post_visit_summary, "red_flags", []),
+                }
+
+    return PatientAppointmentResponse(
+        appointment_id=str(appointment.id),
+        doctor_id=str(doctor.id) if doctor else "",
+        doctor_name=doctor.name if doctor else "Specialist",
+        slot_start=appointment.slot_start,
+        slot_end=appointment.slot_end,
+        status=appointment.status,
+        symptom_summary=symptom_summary_dict,
+        visit_notes=visit_notes_dict,
+        ai_post_visit_summary=ai_post_visit_dict,
+    )

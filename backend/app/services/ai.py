@@ -26,6 +26,10 @@ def transcribe_audio_symptoms(audio_bytes: bytes, mime_type: str = "audio/webm")
         logger.warning("GEMINI_API_KEY is not set for audio transcription")
         return "I am experiencing severe symptoms and require medical consultation."
 
+    clean_mime = (mime_type or "audio/webm").split(";")[0].strip().lower()
+    if clean_mime not in ["audio/webm", "audio/mp4", "audio/ogg", "audio/wav", "audio/mp3", "audio/m4a", "audio/aac"]:
+        clean_mime = "audio/webm"
+
     try:
         client = genai.Client(api_key=settings.gemini_api_key)
         prompt = (
@@ -39,7 +43,7 @@ def transcribe_audio_symptoms(audio_bytes: bytes, mime_type: str = "audio/webm")
             contents=[
                 types.Part.from_bytes(
                     data=audio_bytes,
-                    mime_type=mime_type,
+                    mime_type=clean_mime,
                 ),
                 prompt,
             ],

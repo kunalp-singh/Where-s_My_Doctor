@@ -162,3 +162,13 @@ async def appointments(
     _guard: dict[str, str] = Depends(require_roles(UserRole.PATIENT)),
 ) -> list[PatientAppointmentResponse]:
     return await list_patient_appointments(str(patient_id))
+
+
+@router.get("/appointments/{appointment_id}", response_model=PatientAppointmentResponse)
+async def fetch_appointment_detail(
+    appointment_id: str,
+    patient_id: str = Depends(get_current_user_id),
+    _guard: dict[str, str] = Depends(require_roles(UserRole.PATIENT)),
+) -> PatientAppointmentResponse:
+    from ...services.patient import get_patient_appointment_detail
+    return await get_patient_appointment_detail(str(patient_id), appointment_id)
