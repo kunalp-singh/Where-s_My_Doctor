@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "../../../components/ui/Card";
 import { StepTracker } from "../../../components/ui/StepTracker";
@@ -16,6 +17,7 @@ export default function SymptomFirstBookingPage() {
     "I have had a severe throbbing headache on the right side of my head for 2 days with sensitivity to light."
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -27,6 +29,62 @@ export default function SymptomFirstBookingPage() {
       }
     }
   }, [authStatus, user, router]);
+
+  // Voice Input via Web Speech API
+  const handleToggleVoiceInput = () => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setErrorMsg("Voice input is not supported in your browser. Please type your symptoms manually.");
+      return;
+    }
+
+    if (isListening) {
+      setIsListening(false);
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        setErrorMsg(null);
+      };
+
+      recognition.onresult = (event: any) => {
+        let transcript = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        if (transcript.trim()) {
+          setSymptomsText(transcript);
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error("Speech recognition error", event.error);
+        setIsListening(false);
+        if (event.error === "not-allowed") {
+          setErrorMsg("Microphone access denied. Please grant microphone permission to use voice input.");
+        }
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognition.start();
+    } catch (err: any) {
+      console.error("Voice input error", err);
+      setIsListening(false);
+      setErrorMsg("Could not start voice recognition. Please try typing manually.");
+    }
+  };
 
   const handleSubmitSymptoms = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,7 +128,6 @@ export default function SymptomFirstBookingPage() {
             </p>
           </div>
 
-          {/* Plant Sprout Progress Tracker */}
           <StepTracker steps={steps} />
         </header>
 
@@ -81,21 +138,45 @@ export default function SymptomFirstBookingPage() {
         )}
 
         <Card className="rounded-3xl border border-[#d7e2db] bg-[#f9f7f1] p-6 shadow-sm">
-          <CardHeader className="px-0 pt-0 pb-4 border-b border-[#d7e2db]/70">
+          <CardHeader className="px-0 pt-0 pb-4 border-b border-[#d7e2db]/70 flex items-center justify-between">
             <CardTitle className="text-lg font-bold">What symptoms are you experiencing?</CardTitle>
+
+            {/* Voice Dictation Button */}
+            <button
+              type="button"
+              onClick={handleToggleVoiceInput}
+              className={`flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-bold transition-all duration-200 ${
+                isListening
+                  ? "border-red-500 bg-red-50 text-red-700 animate-pulse shadow-md"
+                  : "border-[#3e6b63] bg-white text-[#3e6b63] hover:bg-[#edf4ef]"
+              }`}
+            >
+              <span className="text-sm">{isListening ? "🎙️" : "🎤"}</span>
+              <span>{isListening ? "Listening... Speak Now" : "Speak Symptoms (Voice Input)"}</span>
+            </button>
           </CardHeader>
+
           <CardBody className="px-0 pt-4 pb-0">
             <form onSubmit={handleSubmitSymptoms} className="space-y-5">
               <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#42564f] mb-2">
-                  Detailed Symptoms Description
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-[#42564f]">
+                    Detailed Symptoms Description
+                  </label>
+                  {isListening && (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600">
+                      <span className="h-2 w-2 rounded-full bg-red-600 animate-ping" />
+                      Live Voice Transcription Active
+                    </span>
+                  )}
+                </div>
+
                 <textarea
                   rows={5}
                   required
                   value={symptomsText}
                   onChange={(e) => setSymptomsText(e.target.value)}
-                  placeholder="Describe your symptoms, when they started, severity, triggers, or any specific health concerns..."
+                  placeholder="Describe your symptoms, when they started, severity, triggers, or click 'Speak Symptoms' to dictate..."
                   className="w-full rounded-2xl border border-[#d7e2db] bg-white p-4 text-sm outline-none transition-all duration-200 focus:border-[#3e6b63] focus:ring-2 focus:ring-[#3e6b63]/20"
                 />
               </div>

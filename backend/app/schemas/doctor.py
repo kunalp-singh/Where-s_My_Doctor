@@ -24,14 +24,19 @@ class DoctorVisitSummary(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     appointment_id: str = Field(alias="appointmentId")
-    doctor_notes: str = Field(alias="doctorNotes")
-    prescription: list[PrescriptionItem] = Field(default_factory=list)
+    chief_complaint: str = Field(alias="chiefComplaint")
+    diagnosis: str
+    notes: str
+    prescriptions: list[PrescriptionItem] = Field(default_factory=list)
 
 
 class DoctorNotesResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     appointment_id: str = Field(alias="appointmentId")
+    patient_name: str = Field(alias="patientName")
+    symptoms_text: str | None = Field(default=None, alias="symptomsText")
+    ai_pre_visit_summary: dict | None = Field(default=None, alias="aiPreVisitSummary")
     doctor_notes: str = Field(alias="doctorNotes")
     prescription: list[PrescriptionItem] = Field(default_factory=list)
     ai_post_visit_summary: PostVisitSummary | None = Field(default=None, alias="aiPostVisitSummary")

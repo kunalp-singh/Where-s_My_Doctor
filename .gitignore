@@ -3,30 +3,34 @@
 .env.*
 *.env
 backend/.env
-frontend/.env.local
 frontend/.env
+frontend/.env.local
 
 # Dependencies
 node_modules/
+**/node_modules/
 .venv/
+**/.venv/
 venv/
 env/
 ENV/
 
 # Next.js build outputs
-frontend/.next/
 .next/
+**/.next/
 out/
 build/
 dist/
 
 # Python bytecode & caches
 __pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
 .coverage
 htmlcov/
+celerybeat-schedule*
 
 # Logs & temporary files
 *.log
@@ -45,3 +49,4 @@ Thumbs.db
 .vscode/
 .idea/
 .gemini/
+

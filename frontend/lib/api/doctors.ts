@@ -15,6 +15,16 @@ export interface DoctorAppointmentItem {
 export interface DoctorNotesResponse {
   appointmentId: string;
   patientName: string;
+  symptomsText?: string;
+  aiPreVisitSummary?: {
+    urgency?: string;
+    chief_complaint?: string;
+    chiefComplaint?: string;
+    follow_up_questions?: string[];
+    followUpQuestions?: string[];
+    recommended_specialisation?: string;
+    recommendedSpecialisation?: string;
+  };
   chiefComplaint?: string;
   diagnosis?: string;
   notes?: string;

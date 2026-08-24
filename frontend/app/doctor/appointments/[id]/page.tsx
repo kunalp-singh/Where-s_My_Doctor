@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { AIInsightCard } from "../../../../components/ui/AIInsightCard";
+import { Badge } from "../../../../components/ui/Badge";
 import { Button } from "../../../../components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "../../../../components/ui/Card";
 import { DoctorNotesResponse, getVisitDetail, submitVisitNotes } from "../../../../lib/api/doctors";
@@ -85,8 +85,14 @@ export default function DoctorConsultationPage() {
 
     try {
       const validPrescriptions = prescriptions.filter((p) => p.medicationName.trim().length > 0);
+      const chiefComp =
+        visitDetail?.aiPreVisitSummary?.chief_complaint ||
+        visitDetail?.aiPreVisitSummary?.chiefComplaint ||
+        visitDetail?.chiefComplaint ||
+        "Routine consultation";
+
       const res = await submitVisitNotes(appointmentId, {
-        chiefComplaint: visitDetail?.chiefComplaint || "Routine consultation",
+        chiefComplaint: chiefComp,
         diagnosis,
         notes,
         prescriptions: validPrescriptions,
@@ -115,6 +121,11 @@ export default function DoctorConsultationPage() {
     );
   }
 
+  const aiSummary = visitDetail?.aiPreVisitSummary;
+  const urgency = aiSummary?.urgency || "routine";
+  const chiefComplaint = aiSummary?.chief_complaint || aiSummary?.chiefComplaint || visitDetail?.chiefComplaint;
+  const followUps = aiSummary?.follow_up_questions || aiSummary?.followUpQuestions || [];
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-[#edf4ef] via-[#f8f6f0] to-[#f1f6f2] px-6 py-10 text-[#21322a]">
       <div className="mx-auto max-w-4xl space-y-6">
@@ -141,16 +152,70 @@ export default function DoctorConsultationPage() {
           </div>
         )}
 
-        <AIInsightCard
-          title="Pre-Visit AI Insight & Triage"
-          summary={visitDetail?.chiefComplaint || "No pre-visit symptoms submitted by patient."}
-          insights={[
-            `Patient: ${visitDetail?.patientName || 'Patient'}`,
-            `Pre-Submitted Complaint: ${visitDetail?.chiefComplaint || 'Standard Routine Visit'}`,
-          ]}
-          tone="calm"
-        />
+        {/* AI Pre-Visit Triage & Patient Info Card */}
+        <Card className="rounded-3xl border border-[#3e6b63]/30 bg-gradient-to-br from-[#edf4ef] to-[#f8f6f0] p-6 shadow-sm">
+          <CardHeader className="px-0 pt-0 pb-4 border-b border-[#d7e2db] flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">🤖</span>
+              <div>
+                <CardTitle className="text-lg font-bold text-[#21322a]">
+                  Patient AI Triage & Symptoms Summary
+                </CardTitle>
+                <p className="text-xs text-[#587066]">
+                  AI-analyzed pre-visit assessment from patient intake
+                </p>
+              </div>
+            </div>
+            <Badge variant={urgency === "high" || urgency === "urgent" ? "urgent" : "calm"}>
+              {urgency.toUpperCase()} URGENCY
+            </Badge>
+          </CardHeader>
 
+          <CardBody className="px-0 pt-5 pb-0 space-y-4">
+            {/* Raw Spoken/Typed Patient Symptoms */}
+            {visitDetail?.symptomsText && (
+              <div className="rounded-2xl border border-[#d7e2db] bg-white p-4 space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#3e6b63] block">
+                  🗣️ Patient's Direct Symptoms Input
+                </span>
+                <p className="text-xs text-[#21322a] italic font-medium leading-relaxed">
+                  "{visitDetail.symptomsText}"
+                </p>
+              </div>
+            )}
+
+            {/* AI Chief Complaint Summary */}
+            {chiefComplaint && (
+              <div className="rounded-2xl border border-[#d7e2db] bg-white p-4 space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#3e6b63] block">
+                  📋 AI Summarized Chief Complaint
+                </span>
+                <p className="text-xs text-[#21322a] font-semibold">
+                  {chiefComplaint}
+                </p>
+              </div>
+            )}
+
+            {/* AI Recommended Follow-Up Questions for Doctor */}
+            {followUps.length > 0 && (
+              <div className="rounded-2xl border border-[#d7e2db] bg-white p-4 space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#3e6b63] block">
+                  💡 AI Suggested Questions to Ask Patient
+                </span>
+                <ul className="space-y-1.5 pl-1">
+                  {followUps.map((q, idx) => (
+                    <li key={idx} className="flex items-start gap-2 text-xs text-[#21322a] font-medium">
+                      <span className="text-[#3e6b63] font-bold">•</span>
+                      <span>{q}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardBody>
+        </Card>
+
+        {/* Doctor Clinical Notes & Prescription Form */}
         <Card className="rounded-3xl border border-[#d7e2db] bg-[#f9f7f1] p-6 shadow-sm">
           <CardHeader className="px-0 pt-0 pb-4 border-b border-[#d7e2db]/70">
             <CardTitle className="text-lg font-bold">Clinical Notes & Prescriptions</CardTitle>

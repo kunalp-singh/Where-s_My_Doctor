@@ -70,38 +70,24 @@ async def get_visit_detail(doctor_id: str, appointment_id: str) -> DoctorNotesRe
     symptom_form = await SymptomForm.find_one(SymptomForm.appointment_id == appointment.id)
     summary = symptom_form.ai_pre_visit_summary if symptom_form is not None else None
 
-    complaint_val = None
+    summary_dict = None
     if summary is not None:
         if isinstance(summary, dict):
-            complaint_val = summary.get("chief_complaint") or summary.get("chiefComplaint")
-        else:
-            complaint_val = getattr(summary, "chief_complaint", None) or getattr(summary, "chiefComplaint", None)
+            summary_dict = summary
+        elif hasattr(summary, "model_dump"):
+            summary_dict = summary.model_dump()
+        elif hasattr(summary, "__dict__"):
+            summary_dict = summary.__dict__
 
     existing = await VisitNotes.find_one(VisitNotes.appointment_id == appointment.id)
-    if existing is None:
-        return DoctorNotesResponse(
-            appointment_id=str(appointment.id),
-            patient_name=patient.name if patient is not None else "Patient",
-            chief_complaint=complaint_val or (symptom_form.symptoms_text if symptom_form else "Routine Consultation"),
-            diagnosis="",
-            notes="",
-            prescriptions=[],
-        )
-
     return DoctorNotesResponse(
         appointment_id=str(appointment.id),
         patient_name=patient.name if patient is not None else "Patient",
-        chief_complaint=complaint_val or (symptom_form.symptoms_text if symptom_form else "Routine Consultation"),
-        diagnosis=getattr(existing, "diagnosis", "") or "",
-        notes=getattr(existing, "notes", "") or getattr(existing, "doctor_notes", "") or "",
-        prescriptions=[
-            {
-                "medicationName": p.medication_name if hasattr(p, "medication_name") else getattr(p, "medicationName", ""),
-                "dosage": p.dosage,
-                "frequency": p.frequency,
-            }
-            for p in getattr(existing, "prescription", [])
-        ],
+        symptoms_text=symptom_form.symptoms_text if symptom_form else None,
+        ai_pre_visit_summary=summary_dict,
+        doctor_notes=existing.doctor_notes if existing else "",
+        prescription=existing.prescription if existing else [],
+        ai_post_visit_summary=existing.ai_post_visit_summary if existing else None,
     )
 
 
@@ -135,13 +121,13 @@ async def submit_visit_notes(doctor_id: str, appointment_id: str, payload: Docto
     if existing is None:
         existing = VisitNotes(
             appointment_id=appointment.id,
-            doctor_notes=payload.notes or payload.chief_complaint,
+            doctor_notes=payload.notes,
             prescription=prescriptions,
             ai_post_visit_summary=summary,
         )
         await existing.insert()
     else:
-        existing.doctor_notes = payload.notes or payload.chief_complaint
+        existing.doctor_notes = payload.notes
         existing.prescription = prescriptions
         existing.ai_post_visit_summary = summary
         await existing.save()
@@ -149,14 +135,7 @@ async def submit_visit_notes(doctor_id: str, appointment_id: str, payload: Docto
     appointment.status = AppointmentStatus.COMPLETED
     await appointment.save()
 
-    return DoctorNotesResponse(
-        appointment_id=str(appointment.id),
-        patient_name=patient.name if patient is not None else "Patient",
-        chief_complaint=payload.chief_complaint,
-        diagnosis=payload.diagnosis,
-        notes=payload.notes,
-        prescriptions=payload.prescriptions,
-    )
+    return await get_visit_detail(doctor_id, appointment_id)
 
 
 async def get_doctor_schedule(doctor_id: str) -> DoctorScheduleResponse:
