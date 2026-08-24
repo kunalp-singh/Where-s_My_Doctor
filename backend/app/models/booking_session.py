@@ -18,6 +18,7 @@ class BookingSession(Document):
     symptoms_text: str = Field(alias="symptomsText")
     ai_summary: dict[str, Any] = Field(default_factory=dict, alias="aiSummary")
     recommended_specialisation: str = Field(default="General Medicine", alias="recommendedSpecialisation")
+    status: str = Field(default="processing_summary")
     doctor_id: Annotated[PydanticObjectId | None, Field(default=None, alias="doctorId")] = None
     appointment_id: Annotated[PydanticObjectId | None, Field(default=None, alias="appointmentId")] = None
     created_at: datetime = Field(default_factory=utc_now, alias="createdAt")

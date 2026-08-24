@@ -137,18 +137,6 @@ async def submit_visit_notes(
                 )
             )
 
-    # Invoke Gemini AI for patient-friendly post-visit summary (sync function)
-    from .ai import build_post_visit_summary
-    from .notifications import dispatch_appointment_notification
-    from ..models.enums import NotificationType
-
-    ai_dict = await build_post_visit_summary(payload.diagnosis, payload.notes, prescriptions)
-    summary = PostVisitSummary(
-        summary=ai_dict["summary"],
-        follow_up_steps=ai_dict["follow_up_steps"],
-        red_flags=ai_dict["red_flags"],
-    )
-
     existing = await VisitNotes.find_one(VisitNotes.appointment_id == appointment.id)
     if existing is None:
         existing = VisitNotes(
@@ -156,14 +144,16 @@ async def submit_visit_notes(
             diagnosis=payload.diagnosis,
             doctor_notes=payload.notes,
             prescription=prescriptions,
-            ai_post_visit_summary=summary,
+            ai_post_visit_summary=None,
+            status="processing_summary",
         )
         await existing.insert()
     else:
         existing.diagnosis = payload.diagnosis
         existing.doctor_notes = payload.notes
         existing.prescription = prescriptions
-        existing.ai_post_visit_summary = summary
+        existing.ai_post_visit_summary = None
+        existing.status = "processing_summary"
         await existing.save()
 
     appointment.status = AppointmentStatus.COMPLETED
@@ -172,27 +162,35 @@ async def submit_visit_notes(
     # Clear old pending reminders and schedule new ones
     from ..models.notification import MedicationReminder
     from ..models.enums import ReminderStatus
-    from .jobs import schedule_medication_reminders
+    from .jobs import schedule_medication_reminders, trigger_post_visit_summary
     await MedicationReminder.find(
         MedicationReminder.appointment_id == appointment.id,
         MedicationReminder.status == ReminderStatus.PENDING,
     ).delete()
     await schedule_medication_reminders(appointment.id, prescriptions)
 
-    # Dispatch email notification to patient alerting that Post-Visit Care Summary is ready
-    try:
-        await dispatch_appointment_notification(
-            str(appointment.id),
-            NotificationType.REMINDER,
-            subject="Your CareConnect Post-Visit Summary & Prescription Details",
-            body=(
-                f"Hello,\n\nYour consultation with Dr. {doctor.name} is complete.\n\n"
-                f"Summary: {summary.summary}\n\n"
-                "Log into your CareConnect Patient Portal to view your complete medical record and medication checklist."
-            ),
-        )
-    except Exception as n_err:
-        logger.warning("Failed to dispatch post-visit notification email: %s", n_err)
+    # Trigger async post-visit AI summary and email dispatch
+    rx_dicts = []
+    for p in prescriptions or []:
+        if hasattr(p, "model_dump"):
+            rx_dicts.append(p.model_dump())
+        elif isinstance(p, dict):
+            rx_dicts.append(p)
+        else:
+            rx_dicts.append({
+                "medicationName": getattr(p, "medication_name", None) or getattr(p, "medicationName", ""),
+                "dosage": getattr(p, "dosage", ""),
+                "frequency": getattr(p, "frequency", ""),
+                "durationDays": getattr(p, "duration_days", None) or getattr(p, "durationDays", 7),
+                "instructions": getattr(p, "instructions", None),
+            })
+            
+    trigger_post_visit_summary(
+        str(existing.id),
+        payload.diagnosis,
+        payload.notes,
+        rx_dicts,
+    )
 
     return await get_visit_detail(doctor_id, appointment_id)
 
@@ -250,5 +248,6 @@ async def get_visit_detail(doctor_id: str, appointment_id: str) -> DoctorNotesRe
         doctor_notes=notes.doctor_notes if notes else "",
         prescriptions=notes.prescription if notes else [],
         ai_post_visit_summary=notes.ai_post_visit_summary if notes else None,
+        ai_post_visit_summary_status=notes.status if notes else None,
     )
 

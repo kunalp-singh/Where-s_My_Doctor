@@ -184,3 +184,202 @@ async def retry_failed_notifications() -> int:
         await log.save()
 
     return processed
+
+
+async def run_pre_visit_summary_background(form_id_str: str, symptoms_text: str) -> None:
+    from ..models.clinical import SymptomForm
+    from .ai import build_pre_visit_summary
+    import logging
+    import time
+    
+    logger = logging.getLogger("appointment_care")
+    form_id = PydanticObjectId(form_id_str)
+    form = await SymptomForm.get(form_id)
+    if not form:
+        logger.error("SymptomForm %s not found in background task", form_id_str)
+        return
+
+    logger.info("Starting background Gemini pre-visit summary call for SymptomForm %s", form_id_str)
+    start_time = time.time()
+    try:
+        summary = await build_pre_visit_summary(symptoms_text)
+        duration = time.time() - start_time
+        logger.info("Successfully generated pre-visit summary for SymptomForm %s in %.2fs", form_id_str, duration)
+        form.ai_pre_visit_summary = summary
+        form.status = "summary_ready"
+    except Exception as exc:
+        duration = time.time() - start_time
+        logger.error("Failed to generate pre-visit summary for SymptomForm %s in %.2fs: %s", form_id_str, duration, exc)
+        form.ai_pre_visit_summary = {
+            "urgency": "medium",
+            "chief_complaint": symptoms_text[:160],
+            "follow_up_questions": [
+                "Can you describe the severity and duration of your symptoms?",
+                "Have you experienced similar issues previously?",
+                "Are there any aggravating or relieving factors?",
+            ],
+            "recommended_specialisation": "General Medicine",
+        }
+        form.status = "summary_failed"
+    await form.save()
+
+
+async def run_booking_session_summary_background(session_id_str: str, symptoms_text: str) -> None:
+    from ..models.booking_session import BookingSession
+    from .ai import build_pre_visit_summary
+    import logging
+    import time
+    
+    logger = logging.getLogger("appointment_care")
+    session_id = PydanticObjectId(session_id_str)
+    session = await BookingSession.get(session_id)
+    if not session:
+        logger.error("BookingSession %s not found in background task", session_id_str)
+        return
+
+    logger.info("Starting background Gemini pre-visit summary call for BookingSession %s", session_id_str)
+    start_time = time.time()
+    try:
+        summary = await build_pre_visit_summary(symptoms_text)
+        duration = time.time() - start_time
+        logger.info("Successfully generated pre-visit summary for BookingSession %s in %.2fs", session_id_str, duration)
+        session.ai_summary = summary
+        session.recommended_specialisation = summary.get("recommended_specialisation", "General Medicine")
+        session.status = "summary_ready"
+    except Exception as exc:
+        duration = time.time() - start_time
+        logger.error("Failed to generate pre-visit summary for BookingSession %s in %.2fs: %s", session_id_str, duration, exc)
+        session.ai_summary = {
+            "urgency": "medium",
+            "chief_complaint": symptoms_text[:160],
+            "follow_up_questions": [
+                "Can you describe the severity and duration of your symptoms?",
+                "Have you experienced similar issues previously?",
+                "Are there any aggravating or relieving factors?",
+            ],
+            "recommended_specialisation": "General Medicine",
+        }
+        session.recommended_specialisation = "General Medicine"
+        session.status = "summary_failed"
+    await session.save()
+
+
+async def run_post_visit_summary_background(
+    visit_notes_id_str: str,
+    diagnosis: str | None,
+    notes: str | None,
+    prescriptions_data: list,
+) -> None:
+    from ..models.clinical import VisitNotes
+    from .ai import build_post_visit_summary
+    from ..models.embedded import PostVisitSummary
+    import logging
+    import time
+
+    logger = logging.getLogger("appointment_care")
+    notes_id = PydanticObjectId(visit_notes_id_str)
+    existing = await VisitNotes.get(notes_id)
+    if not existing:
+        logger.error("VisitNotes %s not found in background task", visit_notes_id_str)
+        return
+
+    logger.info("Starting background Gemini post-visit summary call for VisitNotes %s", visit_notes_id_str)
+    start_time = time.time()
+    try:
+        ai_dict = await build_post_visit_summary(diagnosis, notes, prescriptions_data)
+        duration = time.time() - start_time
+        logger.info("Successfully generated post-visit summary for VisitNotes %s in %.2fs", visit_notes_id_str, duration)
+        summary = PostVisitSummary(
+            summary=ai_dict["summary"],
+            follow_up_steps=ai_dict["follow_up_steps"],
+            red_flags=ai_dict["red_flags"],
+        )
+        existing.ai_post_visit_summary = summary
+        existing.status = "summary_ready"
+    except Exception as exc:
+        duration = time.time() - start_time
+        logger.error("Failed to generate post-visit summary for VisitNotes %s in %.2fs: %s", visit_notes_id_str, duration, exc)
+        summary = PostVisitSummary(
+            summary=f"Visit completed. Diagnosis: {diagnosis or 'Routine Consultation'}.",
+            follow_up_steps=[
+                "Take prescribed medications exactly as directed.",
+                "Rest and maintain proper hydration.",
+                "Contact the clinic if symptoms worsen.",
+            ],
+            red_flags=[
+                "High fever that does not respond to medication",
+                "Difficulty breathing or chest discomfort",
+                "Sudden severe pain or confusion",
+            ],
+        )
+        existing.ai_post_visit_summary = summary
+        existing.status = "summary_failed"
+    await existing.save()
+
+    # Dispatch email notification to patient alerting that Post-Visit Care Summary is ready
+    try:
+        from .notifications import dispatch_appointment_notification
+        from ..models.enums import NotificationType
+        from ..models.appointment import Appointment
+        from ..models.user import User
+
+        appointment = await Appointment.get(existing.appointment_id)
+        if appointment:
+            doctor = await User.get(appointment.doctor_id)
+            doctor_name = doctor.name if doctor else "your specialist"
+            await dispatch_appointment_notification(
+                str(appointment.id),
+                NotificationType.REMINDER,
+                subject="Your CareConnect Post-Visit Summary & Prescription Details",
+                body=(
+                    f"Hello,\n\nYour consultation with Dr. {doctor_name} is complete.\n\n"
+                    f"Summary: {summary.summary}\n\n"
+                    "Please sign in to your CareConnect Portal to view your complete post-visit care plan and warning signs."
+                ),
+            )
+    except Exception as email_err:
+        logger.error("Failed to send post-visit notification email: %s", email_err)
+
+
+def trigger_pre_visit_summary(form_id_str: str, symptoms_text: str):
+    import logging
+    logger = logging.getLogger("appointment_care")
+    try:
+        from ..celery_app import generate_pre_visit_summary_task
+        generate_pre_visit_summary_task.delay(form_id_str, symptoms_text)
+        logger.info("Enqueued pre-visit summary Celery task for Form %s", form_id_str)
+    except Exception as exc:
+        import asyncio
+        asyncio.create_task(run_pre_visit_summary_background(form_id_str, symptoms_text))
+        logger.info("Flipped to asyncio.create_task pre-visit summary fallback: %s", exc)
+
+
+def trigger_booking_session_summary(session_id_str: str, symptoms_text: str):
+    import logging
+    logger = logging.getLogger("appointment_care")
+    try:
+        from ..celery_app import generate_booking_session_summary_task
+        generate_booking_session_summary_task.delay(session_id_str, symptoms_text)
+        logger.info("Enqueued booking session Celery task for Session %s", session_id_str)
+    except Exception as exc:
+        import asyncio
+        asyncio.create_task(run_booking_session_summary_background(session_id_str, symptoms_text))
+        logger.info("Flipped to asyncio.create_task booking session summary fallback: %s", exc)
+
+
+def trigger_post_visit_summary(
+    visit_notes_id_str: str,
+    diagnosis: str | None,
+    notes: str | None,
+    prescriptions_data: list,
+):
+    import logging
+    logger = logging.getLogger("appointment_care")
+    try:
+        from ..celery_app import generate_post_visit_summary_task
+        generate_post_visit_summary_task.delay(visit_notes_id_str, diagnosis, notes, prescriptions_data)
+        logger.info("Enqueued post-visit summary Celery task for Notes %s", visit_notes_id_str)
+    except Exception as exc:
+        import asyncio
+        asyncio.create_task(run_post_visit_summary_background(visit_notes_id_str, diagnosis, notes, prescriptions_data))
+        logger.info("Flipped to asyncio.create_task post-visit summary fallback: %s", exc)

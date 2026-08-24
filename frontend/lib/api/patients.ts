@@ -43,10 +43,13 @@ export interface PatientAppointmentResponse {
     redFlags?: string[];
     red_flags?: string[];
   };
+  symptomSummaryStatus?: string;
+  aiPostVisitSummaryStatus?: string;
 }
 
 export interface BookingSession {
   sessionId: string;
+  status: string;
   symptomsText: string;
   aiSummary: {
     urgency?: string;

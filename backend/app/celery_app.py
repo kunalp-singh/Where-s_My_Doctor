@@ -19,8 +19,15 @@ from .models import (
     SymptomForm,
     User,
     VisitNotes,
+    BookingSession,
 )
-from .services.jobs import process_medication_reminders, retry_failed_notifications
+from .services.jobs import (
+    process_medication_reminders,
+    retry_failed_notifications,
+    run_pre_visit_summary_background,
+    run_booking_session_summary_background,
+    run_post_visit_summary_background,
+)
 
 settings = get_settings()
 
@@ -64,6 +71,7 @@ async def _init_db():
             GoogleCalendarCredential,
             MedicationReminder,
             NotificationLog,
+            BookingSession,
         ],
     )
 
@@ -86,3 +94,37 @@ def process_medication_reminders_task() -> int:
 @celery_app.task(name="app.celery_app.retry_failed_notifications_task")
 def retry_failed_notifications_task() -> int:
     return asyncio.run(_run_retry_failed_notifications())
+
+
+@celery_app.task(name="app.celery_app.generate_pre_visit_summary_task")
+def generate_pre_visit_summary_task(form_id_str: str, symptoms_text: str):
+    async def run():
+        await _init_db()
+        await run_pre_visit_summary_background(form_id_str, symptoms_text)
+    asyncio.run(run())
+
+
+@celery_app.task(name="app.celery_app.generate_booking_session_summary_task")
+def generate_booking_session_summary_task(session_id_str: str, symptoms_text: str):
+    async def run():
+        await _init_db()
+        await run_booking_session_summary_background(session_id_str, symptoms_text)
+    asyncio.run(run())
+
+
+@celery_app.task(name="app.celery_app.generate_post_visit_summary_task")
+def generate_post_visit_summary_task(
+    visit_notes_id_str: str,
+    diagnosis: str | None,
+    notes: str | None,
+    prescriptions_data: list,
+):
+    async def run():
+        await _init_db()
+        await run_post_visit_summary_background(
+            visit_notes_id_str,
+            diagnosis,
+            notes,
+            prescriptions_data,
+        )
+    asyncio.run(run())

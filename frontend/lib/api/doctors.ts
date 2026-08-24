@@ -31,6 +31,7 @@ export interface DoctorNotesResponse {
   doctorNotes?: string;
   notes?: string;
   prescriptions?: Array<{ medicationName: string; dosage: string; frequency: string; durationDays?: number }>;
+  aiPostVisitSummaryStatus?: string;
 }
 
 export interface WorkingHourItem {

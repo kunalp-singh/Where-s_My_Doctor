@@ -51,13 +51,14 @@ class SymptomSubmission(BaseModel):
 
 
 class SymptomSummaryResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     appointment_id: str = Field(alias="appointmentId")
-    urgency: str
-    chief_complaint: str = Field(alias="chiefComplaint")
+    status: str = Field(default="processing_summary")
+    urgency: str | None = None
+    chief_complaint: str | None = Field(default=None, alias="chiefComplaint")
     follow_up_questions: list[str] = Field(default_factory=list, alias="followUpQuestions")
-    recommended_specialisation: str = Field(default="General Medicine", alias="recommendedSpecialisation")
+    recommended_specialisation: str | None = Field(default=None, alias="recommendedSpecialisation")
 
 
 class PatientAppointmentResponse(BaseModel):
@@ -72,6 +73,8 @@ class PatientAppointmentResponse(BaseModel):
     symptom_summary: dict[str, Any] | None = Field(default=None, alias="symptomSummary")
     visit_notes: dict[str, Any] | None = Field(default=None, alias="visitNotes")
     ai_post_visit_summary: dict[str, Any] | None = Field(default=None, alias="aiPostVisitSummary")
+    symptom_summary_status: str | None = Field(default=None, alias="symptomSummaryStatus")
+    ai_post_visit_summary_status: str | None = Field(default=None, alias="aiPostVisitSummaryStatus")
 
 
 class CreateBookingSessionRequest(BaseModel):
@@ -88,12 +91,13 @@ class UpdateBookingSessionRequest(BaseModel):
 
 
 class BookingSessionResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     session_id: str = Field(alias="sessionId")
+    status: str = Field(default="processing_summary")
     symptoms_text: str = Field(alias="symptomsText")
     ai_summary: dict[str, Any] = Field(default_factory=dict, alias="aiSummary")
-    recommended_specialisation: str = Field(default="General Medicine", alias="recommendedSpecialisation")
+    recommended_specialisation: str | None = Field(default=None, alias="recommendedSpecialisation")
     doctor_id: str | None = Field(default=None, alias="doctorId")
     appointment_id: str | None = Field(default=None, alias="appointmentId")
 

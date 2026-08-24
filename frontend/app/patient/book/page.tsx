@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "../../../components/ui/Card";
 import { StepTracker } from "../../../components/ui/StepTracker";
-import { createBookingSession, transcribeAudioSymptoms } from "../../../lib/api/patients";
+import { createBookingSession, getBookingSession, transcribeAudioSymptoms } from "../../../lib/api/patients";
 import { useAuth } from "../../../lib/AuthContext";
 
 export default function SymptomFirstBookingPage() {
@@ -223,7 +223,27 @@ export default function SymptomFirstBookingPage() {
 
     try {
       const session = await createBookingSession(symptomsText);
-      router.push(`/patient/book/${session.sessionId}/doctors`);
+      
+      let retries = 0;
+      const maxRetries = 30; // 30 * 2s = 60s
+      const interval = setInterval(async () => {
+        try {
+          retries++;
+          const sess = await getBookingSession(session.sessionId);
+          if (sess.status === "summary_ready" || sess.status === "summary_failed") {
+            clearInterval(interval);
+            router.push(`/patient/book/${session.sessionId}/doctors`);
+          } else if (retries >= maxRetries) {
+            clearInterval(interval);
+            setErrorMsg("AI department recommendation is taking longer than usual, proceeding to department selection...");
+            setTimeout(() => {
+              router.push(`/patient/book/${session.sessionId}/doctors`);
+            }, 3000);
+          }
+        } catch (pollErr) {
+          console.error("Error polling booking session", pollErr);
+        }
+      }, 2000);
     } catch (err: any) {
       console.error("Error starting booking session", err);
       setErrorMsg(err.message || "Failed to analyze symptoms. Please try again.");
@@ -263,92 +283,109 @@ export default function SymptomFirstBookingPage() {
           </div>
         )}
 
-        <Card className="rounded-3xl border border-[#d7e2db] bg-[#f9f7f1] p-6 shadow-sm">
-          <CardHeader className="px-0 pt-0 pb-4 border-b border-[#d7e2db]/70">
-            <CardTitle className="text-lg font-bold">What symptoms are you experiencing?</CardTitle>
-          </CardHeader>
+        {isSubmitting ? (
+          <Card className="rounded-3xl border border-[#3e6b63]/30 bg-gradient-to-br from-[#edf4ef] to-[#f8f6f0] p-8 shadow-sm animate-pulse">
+            <CardBody className="space-y-4 text-center py-10 flex flex-col items-center justify-center">
+              <span className="text-5xl animate-bounce">🤖</span>
+              <h2 className="text-xl font-black text-[#21322a] mt-4">Analyzing symptoms...</h2>
+              <p className="text-xs text-[#587066] max-w-sm mx-auto leading-relaxed">
+                Our AI care assistant is reviewing your symptoms to recommend the best specialist department. This takes just a moment.
+              </p>
+              <div className="w-full max-w-md space-y-3 mt-8">
+                <div className="h-3 bg-[#d7e2db] rounded-full w-3/4 mx-auto" />
+                <div className="h-3 bg-[#d7e2db] rounded-full w-5/6 mx-auto" />
+                <div className="h-3 bg-[#d7e2db] rounded-full w-2/3 mx-auto" />
+              </div>
+            </CardBody>
+          </Card>
+        ) : (
+          <Card className="rounded-3xl border border-[#d7e2db] bg-[#f9f7f1] p-6 shadow-sm">
+            <CardHeader className="px-0 pt-0 pb-4 border-b border-[#d7e2db]/70">
+              <CardTitle className="text-lg font-bold">What symptoms are you experiencing?</CardTitle>
+            </CardHeader>
 
-          <CardBody className="px-0 pt-4 pb-0">
-            <form onSubmit={handleSubmitSymptoms} className="space-y-5">
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#42564f] mb-2">
-                  Detailed Symptoms Description
-                </label>
+            <CardBody className="px-0 pt-4 pb-0">
+              <form onSubmit={handleSubmitSymptoms} className="space-y-5">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-[#42564f] mb-2">
+                    Detailed Symptoms Description
+                  </label>
 
-                {/* Textarea with Minimal Mic & Stop Controls */}
-                <div className="relative">
-                  <textarea
-                    rows={5}
-                    required
-                    value={symptomsText}
-                    onChange={(e) => setSymptomsText(e.target.value)}
-                    placeholder={
-                      isTranscribing
-                        ? "Transcribing voice audio..."
-                        : "Describe your symptoms, or tap the microphone icon to record..."
-                    }
-                    className={`w-full rounded-2xl border bg-white p-4 text-sm outline-none transition-all duration-200 ${
-                      isListening
-                        ? "border-red-400 ring-2 ring-red-400/40 pr-32"
-                        : "border-[#d7e2db] pr-14 focus:border-[#3e6b63] focus:ring-2 focus:ring-[#3e6b63]/20"
-                    }`}
-                  />
+                  {/* Textarea with Minimal Mic & Stop Controls */}
+                  <div className="relative">
+                    <textarea
+                      rows={5}
+                      required
+                      value={symptomsText}
+                      onChange={(e) => setSymptomsText(e.target.value)}
+                      placeholder={
+                        isTranscribing
+                          ? "Transcribing voice audio..."
+                          : "Describe your symptoms, or tap the microphone icon to record..."
+                      }
+                      className={`w-full rounded-2xl border bg-white p-4 text-sm outline-none transition-all duration-200 ${
+                        isListening
+                          ? "border-red-400 ring-2 ring-red-400/40 pr-32"
+                          : "border-[#d7e2db] pr-14 focus:border-[#3e6b63] focus:ring-2 focus:ring-[#3e6b63]/20"
+                      }`}
+                    />
 
-                  {/* Right Corner Minimal Controls */}
-                  <div className="absolute right-3.5 top-3.5 flex items-center gap-1.5">
-                    {/* Stop Button when Recording */}
-                    {isListening && (
+                    {/* Right Corner Minimal Controls */}
+                    <div className="absolute right-3.5 top-3.5 flex items-center gap-1.5">
+                      {/* Stop Button when Recording */}
+                      {isListening && (
+                        <button
+                          type="button"
+                          onClick={handleStopListening}
+                          className="rounded-full bg-red-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm hover:bg-red-700 transition"
+                        >
+                          ⏹ Stop
+                        </button>
+                      )}
+
+                      {/* Microphone Icon Button */}
                       <button
                         type="button"
-                        onClick={handleStopListening}
-                        className="rounded-full bg-red-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm hover:bg-red-700 transition"
+                        disabled={isTranscribing}
+                        onClick={handleToggleVoiceInput}
+                        title={isListening ? "Stop recording" : "Record symptoms with mic"}
+                        className={`flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 ${
+                          isListening
+                            ? "border-red-500 bg-red-100 text-red-600 animate-pulse shadow-md scale-105"
+                            : isTranscribing
+                            ? "border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed"
+                            : "border-[#d7e2db] bg-[#f9f7f1] text-[#3e6b63] hover:border-[#3e6b63] hover:bg-[#3e6b63] hover:text-white"
+                        }`}
                       >
-                        ⏹ Stop
+                        {isTranscribing ? (
+                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#3e6b63] border-t-transparent" />
+                        ) : (
+                          <span className="text-base">{isListening ? "🎙️" : "🎤"}</span>
+                        )}
                       </button>
-                    )}
-
-                    {/* Microphone Icon Button */}
-                    <button
-                      type="button"
-                      disabled={isTranscribing}
-                      onClick={handleToggleVoiceInput}
-                      title={isListening ? "Stop recording" : "Record symptoms with mic"}
-                      className={`flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 ${
-                        isListening
-                          ? "border-red-500 bg-red-100 text-red-600 animate-pulse shadow-md scale-105"
-                          : isTranscribing
-                          ? "border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed"
-                          : "border-[#d7e2db] bg-[#f9f7f1] text-[#3e6b63] hover:border-[#3e6b63] hover:bg-[#3e6b63] hover:text-white"
-                      }`}
-                    >
-                      {isTranscribing ? (
-                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#3e6b63] border-t-transparent" />
-                      ) : (
-                        <span className="text-base">{isListening ? "🎙️" : "🎤"}</span>
-                      )}
-                    </button>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="flex justify-end">
-                <Button
-                  type="submit"
-                  disabled={isSubmitting || isTranscribing}
-                  variant="accent"
-                  size="lg"
-                  className="rounded-full shadow-lg"
-                >
-                  {isSubmitting
-                    ? "Analyzing Symptoms with AI..."
-                    : isTranscribing
-                    ? "Transcribing..."
-                    : "Analyze Symptoms & Find Specialists →"}
-                </Button>
-              </div>
-            </form>
-          </CardBody>
-        </Card>
+                <div className="flex justify-end">
+                  <Button
+                    type="submit"
+                    disabled={isSubmitting || isTranscribing}
+                    variant="accent"
+                    size="lg"
+                    className="rounded-full shadow-lg"
+                  >
+                    {isSubmitting
+                      ? "Saving..."
+                      : isTranscribing
+                      ? "Transcribing..."
+                      : "Analyze Symptoms & Find Specialists →"}
+                  </Button>
+                </div>
+              </form>
+            </CardBody>
+          </Card>
+        )}
       </div>
     </main>
   );

@@ -32,6 +32,35 @@ export default function PatientAppointmentDetailPage() {
     }
   }, [authStatus, user, router, appointmentId]);
 
+  useEffect(() => {
+    if (!appointment || appointment.status !== "completed" || appointment.aiPostVisitSummaryStatus !== "processing_summary") {
+      return;
+    }
+
+    let retries = 0;
+    const maxRetries = 30; // 60s
+    const interval = setInterval(async () => {
+      try {
+        retries++;
+        const detail = await getPatientAppointmentDetail(appointmentId);
+        if (detail) {
+          if (
+            detail.aiPostVisitSummaryStatus === "summary_ready" ||
+            detail.aiPostVisitSummaryStatus === "summary_failed" ||
+            retries >= maxRetries
+          ) {
+            clearInterval(interval);
+          }
+          setAppointment(detail);
+        }
+      } catch (err) {
+        console.error("Error polling appointment details", err);
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [appointment?.aiPostVisitSummaryStatus, appointmentId]);
+
   const loadDetail = async () => {
     setLoading(true);
     try {
@@ -187,6 +216,22 @@ export default function PatientAppointmentDetailPage() {
             tone="neutral"
             badgeLabel="VISIT SUMMARY"
           />
+        )}
+
+        {appointment.status === "completed" && appointment.aiPostVisitSummaryStatus === "processing_summary" && (
+          <Card className="rounded-3xl border border-[#3e6b63]/30 bg-[#f9f7f1] p-6 shadow-sm animate-pulse">
+            <CardBody className="space-y-3 py-6 flex flex-col items-center justify-center">
+              <span className="text-4xl animate-bounce">🤖</span>
+              <h3 className="text-sm font-black text-[#21322a]">Generating AI Care Summary...</h3>
+              <p className="text-[11px] text-[#587066] text-center max-w-sm">
+                Your post-visit care plan and warning signs are being compiled by our clinical AI assistant. This should take a few seconds.
+              </p>
+              <div className="w-full max-w-md space-y-2 mt-4">
+                <div className="h-2.5 bg-[#d7e2db] rounded-full w-3/4 mx-auto" />
+                <div className="h-2.5 bg-[#d7e2db] rounded-full w-5/6 mx-auto" />
+              </div>
+            </CardBody>
+          </Card>
         )}
 
         {appointment.visitNotes && (

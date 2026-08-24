@@ -42,6 +42,7 @@ class DoctorNotesResponse(BaseModel):
     diagnosis: str | None = None
     prescriptions: list[PrescriptionItem] = Field(default_factory=list)
     ai_post_visit_summary: PostVisitSummary | None = Field(default=None, alias="aiPostVisitSummary")
+    ai_post_visit_summary_status: str | None = Field(default=None, alias="aiPostVisitSummaryStatus")
 
 
 class DoctorScheduleResponse(BaseModel):

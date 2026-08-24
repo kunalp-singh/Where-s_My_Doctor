@@ -467,21 +467,29 @@ async def submit_symptom_form(patient_id: str, appointment_id: str, payload: Sym
     if str(appointment.patient_id) != patient_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Appointment does not belong to this patient")
 
-    summary = build_pre_visit_summary(payload.symptoms_text)
     form = await SymptomForm.find_one(SymptomForm.appointment_id == appointment.id)
     if form is None:
-        form = SymptomForm(appointment_id=appointment.id, symptoms_text=payload.symptoms_text)
+        form = SymptomForm(
+            appointment_id=appointment.id,
+            symptoms_text=payload.symptoms_text,
+            status="processing_summary",
+        )
     else:
         form.symptoms_text = payload.symptoms_text
-    form.ai_pre_visit_summary = summary
+        form.status = "processing_summary"
+        form.ai_pre_visit_summary = None
     await form.save()
+
+    from .jobs import trigger_pre_visit_summary
+    trigger_pre_visit_summary(str(form.id), payload.symptoms_text)
 
     return SymptomSummaryResponse(
         appointment_id=str(appointment.id),
-        urgency=summary["urgency"],
-        chief_complaint=summary["chief_complaint"],
-        follow_up_questions=summary["follow_up_questions"],
-        recommended_specialisation=summary.get("recommended_specialisation", "General Medicine"),
+        status=form.status,
+        urgency=None,
+        chief_complaint=None,
+        follow_up_questions=[],
+        recommended_specialisation=None,
     )
 
 
@@ -511,22 +519,29 @@ async def list_patient_appointments(patient_id: str) -> list[PatientAppointmentR
                 symptom_summary=symptom_summary_dict,
                 visit_notes=visit_notes_dict,
                 ai_post_visit_summary=ai_post_visit_dict,
+                symptom_summary_status=form.status if form else None,
+                ai_post_visit_summary_status=notes.status if notes else None,
             )
         )
     return sorted(responses, key=lambda item: item.slot_start, reverse=True)
 
 
 async def create_booking_session(patient_id: str, symptoms_text: str) -> BookingSessionResponse:
-    ai_res = await build_pre_visit_summary(symptoms_text)
     session = BookingSession(
         patient_id=PydanticObjectId(patient_id),
         symptoms_text=symptoms_text,
-        ai_summary=ai_res,
-        recommended_specialisation=ai_res.get("recommended_specialisation", "General Medicine"),
+        ai_summary={},
+        recommended_specialisation="General Medicine",
+        status="processing_summary",
     )
     await session.insert()
+
+    from .jobs import trigger_booking_session_summary
+    trigger_booking_session_summary(str(session.id), symptoms_text)
+
     return BookingSessionResponse(
         session_id=str(session.id),
+        status=session.status,
         symptoms_text=session.symptoms_text,
         ai_summary=session.ai_summary,
         recommended_specialisation=session.recommended_specialisation,
@@ -602,11 +617,13 @@ async def session_confirm_appointment(patient_id: str, session_id: str) -> Patie
             appointment_id=session.appointment_id,
             symptoms_text=session.symptoms_text,
             ai_pre_visit_summary=session.ai_summary,
+            status=getattr(session, "status", "summary_ready"),
         )
         await form.insert()
     else:
         existing_form.symptoms_text = session.symptoms_text
         existing_form.ai_pre_visit_summary = session.ai_summary
+        existing_form.status = getattr(session, "status", "summary_ready")
         await existing_form.save()
 
     return result
@@ -632,5 +649,7 @@ async def get_patient_appointment_detail(patient_id: str, appointment_id: str) -
         symptom_summary=symptom_summary_dict,
         visit_notes=visit_notes_dict,
         ai_post_visit_summary=ai_post_visit_dict,
+        symptom_summary_status=form.status if form else None,
+        ai_post_visit_summary_status=notes.status if notes else None,
     )
 
