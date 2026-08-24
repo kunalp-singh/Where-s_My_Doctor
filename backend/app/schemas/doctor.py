@@ -8,7 +8,7 @@ from ..models.embedded import LeaveDay, PostVisitSummary, PrescriptionItem, Work
 
 
 class DoctorAppointmentItem(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     appointment_id: str = Field(alias="appointmentId")
     patient_id: str = Field(alias="patientId")
@@ -21,9 +21,9 @@ class DoctorAppointmentItem(BaseModel):
 
 
 class DoctorVisitSummary(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
-    appointment_id: str = Field(alias="appointmentId")
+    appointment_id: str | None = Field(default=None, alias="appointmentId")
     chief_complaint: str = Field(alias="chiefComplaint")
     diagnosis: str
     notes: str
@@ -31,7 +31,7 @@ class DoctorVisitSummary(BaseModel):
 
 
 class DoctorNotesResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     appointment_id: str = Field(alias="appointmentId")
     patient_name: str = Field(alias="patientName")
@@ -43,7 +43,7 @@ class DoctorNotesResponse(BaseModel):
 
 
 class DoctorScheduleResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     doctor_id: str = Field(alias="doctorId")
     specialisation: str
@@ -53,7 +53,7 @@ class DoctorScheduleResponse(BaseModel):
 
 
 class DoctorScheduleUpdate(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     working_hours: list[WorkingHour] | None = Field(default=None, alias="workingHours")
     slot_duration_minutes: int | None = Field(default=None, alias="slotDurationMinutes")

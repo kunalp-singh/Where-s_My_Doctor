@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
 class WorkingHour(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     day_of_week: int = Field(ge=0, le=6, alias="dayOfWeek")
     start_time: time = Field(alias="startTime")
@@ -27,17 +27,17 @@ class PreVisitSummary(BaseModel):
 
 
 class PrescriptionItem(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     medication_name: str = Field(alias="medicationName")
     dosage: str
     frequency: str
-    duration_days: int = Field(ge=1, alias="durationDays")
+    duration_days: int = Field(default=7, ge=1, alias="durationDays")
     instructions: str | None = None
 
 
 class PostVisitSummary(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     summary: str
     follow_up_steps: list[str] = Field(default_factory=list, alias="followUpSteps")
@@ -45,6 +45,6 @@ class PostVisitSummary(BaseModel):
 
 
 class LeaveDay(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     day: date

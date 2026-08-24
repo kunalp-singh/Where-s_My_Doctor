@@ -28,7 +28,7 @@ export interface DoctorNotesResponse {
   chiefComplaint?: string;
   diagnosis?: string;
   notes?: string;
-  prescriptions?: Array<{ medicationName: string; dosage: string; frequency: string }>;
+  prescriptions?: Array<{ medicationName: string; dosage: string; frequency: string; durationDays?: number }>;
 }
 
 export interface WorkingHourItem {
@@ -66,15 +66,31 @@ export async function getVisitDetail(appointmentId: string): Promise<DoctorNotes
 export async function submitVisitNotes(
   appointmentId: string,
   payload: {
+    appointmentId?: string;
     chiefComplaint: string;
     diagnosis: string;
     notes: string;
-    prescriptions: Array<{ medicationName: string; dosage: string; frequency: string }>;
+    prescriptions: Array<{ medicationName: string; dosage: string; frequency: string; durationDays?: number }>;
   }
 ): Promise<DoctorNotesResponse> {
+  const formattedPrescriptions = (payload.prescriptions || []).map((p) => ({
+    medicationName: p.medicationName,
+    dosage: p.dosage,
+    frequency: p.frequency,
+    durationDays: p.durationDays || 7,
+  }));
+
+  const fullPayload = {
+    appointmentId,
+    chiefComplaint: payload.chiefComplaint,
+    diagnosis: payload.diagnosis,
+    notes: payload.notes,
+    prescriptions: formattedPrescriptions,
+  };
+
   return apiFetch<DoctorNotesResponse>(`/doctors/appointments/${appointmentId}/notes`, {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify(fullPayload),
   });
 }
 
